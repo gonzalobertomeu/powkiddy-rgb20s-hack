@@ -44,6 +44,8 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
 
 ## Índice
 
+- **[Blueprint: estado y próximos pasos](blueprint.md)**. Empezar por acá al retomar.
+
 - [Hardware: especificaciones](docs/hardware/rgb20s.md)
 - [Hardware: emulación y pruebas sin la consola](docs/hardware/emulacion.md)
 - [Firmware: sistemas operativos](docs/firmware/sistemas-operativos.md)

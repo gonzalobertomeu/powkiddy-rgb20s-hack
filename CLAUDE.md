@@ -1,7 +1,7 @@
 # Proyecto: hack de la Powkiddy RGB20S
 
 Darle a la consola (RK3326, aarch64) usos distintos a la emulación, empezando por un groovebox en Rust.
-Índice y estructura: `README.md`.
+Índice y estructura: `README.md`. Estado y próximos pasos: `blueprint.md` (leerlo al retomar y actualizarlo al cerrar cada sesión).
 
 ## Convenciones (aplican a la sesión principal y a todos los agentes)
 
