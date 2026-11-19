@@ -17,8 +17,9 @@ manejado con el d-pad y los botones (al estilo LSDJ / M8).
 
 ## Camino B — Groovebox propio (el más interesante)
 
-Stack tentativo:
-- **C** con **SDL2** para pantalla e input, y **ALSA** o **miniaudio** para el audio.
+Stack (lenguaje decidido en [ADR 0001](../decisions/0001-lenguaje-rust.md)):
+- **Rust**, con `sdl2` para pantalla e input y `cpal`/`alsa` para el audio.
+- Comunicación entre la interfaz y el audio con colas lock-free (`rtrb`).
 - Latencia objetivo: unos 5–10 ms (por ejemplo, períodos de 256 frames a 44.1 kHz).
 
 Features iniciales (MVP):
@@ -37,7 +38,7 @@ Ciclo de desarrollo: nativo en la Mac → compilar en un contenedor arm64 → pr
 
 ## Preguntas abiertas
 
-- ¿C o Lua/LÖVE? C da más rendimiento y control. LÖVE se itera más rápido (y PortMaster lo trae).
+- ~~¿C o Lua/LÖVE?~~ → Rust (ver [ADR 0001](../decisions/0001-lenguaje-rust.md)).
 - ¿Cuántas voces simultáneas aguanta el A35? Hay que medirlo en el hardware.
 - ¿Qué tan buena es la salida de audio (ruido, nivel) por el jack?
 
