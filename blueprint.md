@@ -11,7 +11,7 @@ Para los datos técnicos, ver `README.md` y `docs/`.
 - ✅ Decisión: Rust para las apps ([ADR 0001](docs/decisions/0001-lenguaje-rust.md))
 - ✅ 6 agentes, 10 skills y `CLAUDE.md` con delegación automática
 - ⏳ Sin código todavía. `infra/` y `projects/groovebox/` no existen aún
-- ⏳ La consola sigue con el sistema de fábrica (sin respaldo ni dArkOS)
+- ✅ La consola ya tiene ArkOS o dArkOS (falta confirmar cuál y qué versión en el inventario)
 
 ## Próximos pasos (en orden)
 
@@ -21,8 +21,8 @@ Para los datos técnicos, ver `README.md` y `docs/`.
 3. **`rust-dev`** (después del 1): "hola mundo" en `projects/groovebox/` con una ventana SDL2 de 640×480 y un tono con `cpal`. Valida el stack y es la primera lección de Rust.
 
 ### Con la consola
-4. Respaldar la microSD original con `dd` (ver `docs/firmware/sistemas-operativos.md`).
-5. Flashear dArkOS en otra microSD y configurar Wi-Fi, SSH y el host `rgb20s` en `~/.ssh/config`.
+4. ~~Respaldar la microSD original~~: no hace falta, porque el usuario no quiere conservar el sistema original.
+5. Confirmar si es ArkOS o dArkOS (si es ArkOS, evaluar pasar a dArkOS). Configurar Wi-Fi, SSH y el host `rgb20s` en `~/.ssh/config`.
 6. **`device-ops`**: inventario. Confirma glibc, SDL2, códec de audio, chip Wi-Fi y si hay UDC (USB gadget).
 7. Primer deploy del "hola mundo" y medición de latencia de audio.
 
@@ -32,17 +32,18 @@ Para los datos técnicos, ver `README.md` y `docs/`.
 
 ## Pendientes del usuario
 
-- [ ] Reiniciar Claude Code para que carguen los agentes, las skills y el `CLAUDE.md`
-- [ ] Actualizar el remote (el repo se renombró):
+- [x] Reiniciar Claude Code para que carguen los agentes, las skills y el `CLAUDE.md`
+- [x] Actualizar el remote (el repo se renombró):
       `git remote set-url origin git@github.com:gonzalobertomeu/powkiddy-rgb20s-hack.git`
 - [ ] (Opcional) Instalar plugins oficiales:
   - `rustup component add rust-analyzer` y `/plugin install rust-analyzer-lsp@claude-plugins-official`, para análisis de código Rust
   - `/plugin install context7@claude-plugins-official`, para documentación actualizada de crates (usa un servicio externo)
   - No se recomienda `learning-output-style`: la skill `rust-mentor` ya cubre el modo aprendizaje
-- [ ] Responder:
-  - ¿Qué sistema trae la consola hoy?
-  - ¿Hay una segunda microSD libre?
-  - ¿Hay un lector de microSD para esta Mac?
+- [x] Responder (2026-11-19):
+  - Sistema actual: ArkOS o dArkOS (a confirmar cuál)
+  - Segunda microSD: no, y no hace falta conservar el sistema original
+  - Lector de microSD: sí. También hay auriculares o parlante para probar el audio
+- [ ] Confirmar si hay una red Wi-Fi de 2.4 GHz disponible para el SSH
 
 ## Notas de la sesión
 
