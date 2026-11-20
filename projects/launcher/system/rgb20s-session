@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Sesión de la RGB20S en tty1 (la arranca rgb20s-session.service como el usuario alarm).
+#
+# Bucle: corre el launcher, lee su elección y la ejecuta. El launcher no lanza nada: cierra SDL
+# (libera DRM y el gamepad), escribe la elección en --choice-file y sale con 0. Formato (campos
+# terminados en NUL, ver projects/launcher/src/apps.rs, Choice::encode):
+#   reboot\0 | poweroff\0
+#   app\0<nombre>\0<cwd>\0<n>\0<K=V>\0... (n veces) <argv0>\0<arg1>\0...
+# Se lee con `mapfile -d ''`: sin eval ni escapes, los valores pueden tener espacios o comillas.
+#
+# Solo usa bash, coreutils (tty, sleep, rm, mktemp), util-linux (setterm) y systemd; opcionalmente
+# sudo para apagar sin polkit (regla que instala install.sh).
+#
+# Variables (para probarlo fuera de la consola):
+#   LAUNCHER_BIN                ruta del launcher (defecto /home/alarm/launcher/launcher)
+#   RGB20S_SESSION_MAX_LOOPS    corridas del launcher antes de salir (defecto 0 = infinitas)
+#   RGB20S_SESSION_DRY_POWER=1  no reinicia ni apaga: solo lo loguea
+set -uo pipefail
+
+LAUNCHER_BIN="${LAUNCHER_BIN:-/home/alarm/launcher/launcher}"
+MAX_LOOPS="${RGB20S_SESSION_MAX_LOOPS:-0}"
+DRY_POWER="${RGB20S_SESSION_DRY_POWER:-0}"
+# Fallas rápidas seguidas del launcher antes de esperar BACKOFF_SECS.
+FAST_FAIL_SECS=5
+MAX_FAST_FAILS=3
+BACKOFF_SECS=15
+
+log() { printf 'rgb20s-session: %s\n' "$*"; }
+
+# La salida va al journal; la terminal (tty1) se usa solo para esconder el texto entre apps.
+console="$(tty 2>/dev/null)" || console=""
+quiet_console() {
+  [ -n "$console" ] || return 0
+  TERM=linux setterm --cursor off --blank 0 --clear all >"$console" 2>/dev/null || true
+}
+restore_console() {
+  [ -n "$console" ] || return 0
+  TERM=linux setterm --cursor on >"$console" 2>/dev/null || true
+}
+tmp_dir=""
+cleanup() {
+  restore_console
+  [ -z "$tmp_dir" ] || rm -rf -- "$tmp_dir"
+}
+trap cleanup EXIT
+
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -w "$XDG_RUNTIME_DIR" ]; then
+  choice_file="$XDG_RUNTIME_DIR/rgb20s-choice"
+else
+  tmp_dir="$(mktemp -d)" || exit 1
+  choice_file="$tmp_dir/choice"
+  log "sin XDG_RUNTIME_DIR (¿falta la sesión de logind?); uso $choice_file"
+fi
+
+power() {
+  local action="$1"
+  log "acción del sistema: $action"
+  if [ "$DRY_POWER" = 1 ]; then
+    log "(RGB20S_SESSION_DRY_POWER=1: no se ejecuta)"
+    return 0
+  fi
+  # Sin polkit, logind no deja apagar a un usuario: se usa la regla de sudo de install.sh.
+  if systemctl --no-ask-password "$action" || sudo -n /usr/bin/systemctl "$action"; then
+    # systemd va a terminar esta sesión: no volver a abrir el launcher mientras tanto.
+    sleep 60
+  else
+    log "no pude ejecutar $action (¿falta polkit o la regla de sudo de install.sh?)"
+    sleep 2
+  fi
+}
+
+run_app() {
+  # $@ = campos de la elección después de "app"
+  local name="$1" cwd="$2" n="$3"
+  shift 3
+  if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$#" -le "$n" ]; then
+    log "elección inválida para $name (variables: $n, campos: $#)"
+    return
+  fi
+  local envs=("${@:1:n}")
+  shift "$n"
+  [ -n "$cwd" ] || cwd="$HOME"
+  log "abriendo $name: $* (en $cwd${envs[*]:+, con ${envs[*]}})"
+  local start=$SECONDS rc
+  (
+    cd -- "$cwd" || exit 126
+    for kv in "${envs[@]}"; do export "$kv"; done
+    exec "$@"
+  )
+  rc=$?
+  log "$name terminó con código $rc a los $((SECONDS - start)) s"
+}
+
+log "inicio (launcher: $LAUNCHER_BIN, elección: $choice_file)"
+fast_fails=0
+loops=0
+while :; do
+  if [ "$MAX_LOOPS" -gt 0 ] && [ "$loops" -ge "$MAX_LOOPS" ]; then
+    log "fin (RGB20S_SESSION_MAX_LOOPS=$MAX_LOOPS)"
+    exit 0
+  fi
+  loops=$((loops + 1))
+  quiet_console
+  rm -f -- "$choice_file"
+
+  start=$SECONDS
+  if [ -x "$LAUNCHER_BIN" ]; then
+    "$LAUNCHER_BIN" --choice-file "$choice_file"
+    rc=$?
+  else
+    log "no existe el launcher: $LAUNCHER_BIN"
+    rc=127
+  fi
+  elapsed=$((SECONDS - start))
+
+  if [ "$rc" -ne 0 ] || [ ! -s "$choice_file" ]; then
+    log "el launcher salió con código $rc a los $elapsed s, sin elección"
+    if [ "$elapsed" -lt "$FAST_FAIL_SECS" ]; then
+      fast_fails=$((fast_fails + 1))
+    else
+      fast_fails=1
+    fi
+    if [ "$fast_fails" -ge "$MAX_FAST_FAILS" ]; then
+      log "$fast_fails fallas rápidas seguidas: espero $BACKOFF_SECS s"
+      sleep "$BACKOFF_SECS"
+      fast_fails=0
+    else
+      sleep 1
+    fi
+    continue
+  fi
+  fast_fails=0
+
+  fields=()
+  mapfile -d '' -t fields <"$choice_file"
+  case "${fields[0]:-}" in
+    app)
+      if [ "${#fields[@]}" -lt 5 ]; then
+        log "elección incompleta (${#fields[@]} campos)"
+      else
+        run_app "${fields[@]:1}"
+      fi
+      ;;
+    reboot | poweroff) power "${fields[0]}" ;;
+    *) log "elección desconocida: ${fields[0]:-<vacía>}" ;;
+  esac
+done

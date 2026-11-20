@@ -1,0 +1,43 @@
+# Sesión de la RGB20S: el launcher en tty1 en lugar del login de texto.
+# Se instala con install.sh (en la consola, con sudo); uninstall.sh vuelve al getty.
+#
+# PAMName=login + TTYPath hacen que pam_systemd registre una sesión de logind de tipo tty en
+# seat0/VT1, activa porque VT1 es la terminal en primer plano: da XDG_RUNTIME_DIR y acceso a
+# DRM, entrada y audio por ACL de logind (además de los grupos video, input y audio de alarm).
+# Mismo esquema que las unidades de ejemplo de weston y cage.
+
+[Unit]
+Description=Sesión de la RGB20S (launcher en tty1)
+After=systemd-user-sessions.service systemd-logind.service getty@tty1.service
+Wants=systemd-logind.service
+Conflicts=getty@tty1.service
+# Si el wrapper muere 5 veces en 1 min (por ejemplo, falta /usr/local/bin/rgb20s-session),
+# la unidad falla y vuelve el login de texto.
+OnFailure=getty@tty1.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+ConditionPathExists=/dev/tty1
+
+[Service]
+Type=simple
+User=alarm
+PAMName=login
+WorkingDirectory=~
+ExecStart=/usr/local/bin/rgb20s-session
+Environment=SDL_VIDEODRIVER=kmsdrm TERM=linux
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rgb20s-session
+UtmpIdentifier=tty1
+UtmpMode=user
+IgnoreSIGPIPE=no
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+# Apps del launcher, en el orden en que aparecen. Después se agregan "Reiniciar" y "Apagar".
+#
+# Campos de cada [[app]]:
+#   name     nombre en la lista (obligatorio)
+#   command  ejecutable; mejor con ruta absoluta (obligatorio)
+#   args     lista de argumentos (opcional)
+#   cwd      carpeta de trabajo (opcional; por defecto, la carpeta del ejecutable)
+#   env      variables de entorno extra (opcional)
+#
+# Este archivo se despliega en /home/alarm/launcher/assets/apps.toml. Un apps.toml junto al
+# binario (/home/alarm/launcher/apps.toml) tiene prioridad y el deploy no lo pisa.
+
+[[app]]
+name = "Groovebox"
+command = "/home/alarm/groovebox/groovebox"
+cwd = "/home/alarm/groovebox"
+env = { SDL_VIDEODRIVER = "kmsdrm" }

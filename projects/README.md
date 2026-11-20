@@ -14,5 +14,6 @@ projects/<nombre>/
 
 | Proyecto | Solución | Estado |
 |---|---|---|
-| [groovebox](groovebox/README.md) | [Groovebox](../docs/solutions/groovebox/README.md) | H0: ventana y tono (sin probar en la consola) |
-| [linux-image](linux-image/README.md) | [Arch Linux ARM](../docs/firmware/arch-linux-arm.md) | Imagen armada en la Mac, sin arrancar en la consola |
+| [groovebox](groovebox/README.md) | [Groovebox](../docs/solutions/groovebox/README.md) | H5 (canción y cadenas); corre en la consola (KMSDRM, ALSA, gamepad) |
+| [linux-image](linux-image/README.md) | [Arch Linux ARM](../docs/firmware/arch-linux-arm.md) | Arranca en la consola: SSH y red por USB gadget |
+| [launcher](launcher/README.md) | Menú de arranque ([ADR 0014](../docs/decisions/0014-sesion-launcher-en-tty1.md)) | Instalado en la consola: arranca solo en tty1 y abre el groovebox |
