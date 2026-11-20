@@ -19,9 +19,10 @@ Arranca con la última app elegida seleccionada (`$XDG_STATE_HOME/launcher/last`
 Arriba a la derecha, la carga de la batería (`/sys/class/power_supply/*` con `type` = `Battery`; `+` = cargando).
 
 Los botones frontales siguen la disposición **Nintendo** de la consola: A a la derecha, B abajo, Y a la
-izquierda y X arriba. SDL los nombra por posición al estilo Xbox, así que el código intercambia A↔B y X↔Y
-(`PadLayout` en `src/input.rs`). Si en la consola quedan al revés, `RGB20S_PAD_LAYOUT=xbox` usa los
-nombres de SDL tal cual **(sin verificar en el hardware)**.
+izquierda y X arriba. Verificado en el hardware (2026-11-20): el driver entrega A y B con los nombres de
+Xbox de SDL (A abajo, B derecha), pero X e Y ya en su lugar, así que el código intercambia **solo A↔B**
+(`PadLayout` en `src/input.rs`). `RGB20S_PAD_LAYOUT` cambia el mapeo: `xbox` usa los nombres de SDL tal
+cual y `nintendo-full` intercambia A↔B y X↔Y (para consolas que entreguen los cuatro al estilo Xbox).
 
 ## apps.toml
 
