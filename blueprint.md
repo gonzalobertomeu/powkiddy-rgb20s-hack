@@ -12,7 +12,7 @@ Para los datos técnicos, ver `README.md` y `docs/`.
 - ✅ 6 agentes, 10 skills y `CLAUDE.md` con delegación automática
 - ✅ `infra/` y `justfile` armados ([ADR 0008](docs/decisions/0008-compilacion-cruzada-contenedor-x86-multiarch.md), aceptado): contenedor x86 con cross gcc y librerías arm64 de Debian trixie (la misma base que dArkOS). Build limpio en ~20 s e incremental en ~2 s. Ver `infra/README.md`
 - ✅ H0 en `projects/groovebox/`: ventana SDL2 + tono de 440 Hz con cpal/rtrb, probado nativo y en aarch64 emulado (glibc 2.34). Falta probarlo en la consola (video KMSDRM, mapeo de botones, períodos ALSA con `GROOVEBOX_FRAMES`)
-- ✅ La consola ya tiene ArkOS o dArkOS (falta confirmar cuál y qué versión en el inventario)
+- ✅ La consola tiene ArkOS, casi seguro **(sin verificar)**: `boot.ini` de tipo `odroidgoa-uboot-config`, `Image` de 2021, `uInitrd` de 2020 y DTB `rk3326-rg351mp-linux.dtb` (con variantes `.orig` y `.tony`), cargado desde `mmc 1:1`, raíz por UUID. TF1 de 16,4 GB: BOOT FAT32 117 MB + raíz ext4 10,8 GB + EASYROMS exFAT 5,4 GB (2026-11-20)
 
 ## Próximos pasos (en orden)
 
@@ -37,8 +37,19 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 
 ### Camino a Arch Linux ARM (decisión del usuario, 2026-11-19: ir directo a Arch, sin relevar antes el sistema actual)
 4. ✅ (armada, sin probar) **`alarm-image-builder`**: investigar y armar la imagen de Arch Linux ARM para la RGB20S (U-Boot, kernel mainline con el DTS de ROCKNIX, rootfs mínima, red por USB gadget y SSH, autoarranque de una app). Todo sobre archivos `.img`, nunca sobre la SD. Resultado: `infra/build/out/rgb20s-arch.img` (1235 MiB) con `just img`, que pasa los 41 chequeos de `just img-check`. Kernel 7.1.2 con el DTS de ROCKNIX, gadget NCM + ACM (consola en 10.55.0.1, usuario `alarm`/`alarm`) y logs de cada arranque en `/boot/logs/`. ADR 0009 a 0012 aceptados. Riesgos del primer arranque en `docs/firmware/arch-linux-arm.md`.
-5. **Antes de flashear:** con la SD actual montada en la Mac, respaldar en solo lectura la partición de arranque (DTB, U-Boot, config) y, si hay espacio, una imagen completa con `dd`. Es la única referencia de un sistema que arranca en esta consola.
-6. Flashear la imagen de Arch (confirmación explícita del usuario).
+**Primer arranque (2026-11-20): ✅ Arch arranca y hay SSH por USB.**
+- Respaldo de ArkOS en `~/rgb20s-backup/` (`tf1-arkos.img`, 16 361 455 616 bytes, sha256 `ff4034f7…7506533`, sin comparar contra la tarjeta; y `boot-files/`). La imagen grabada vino de Omarchy (`rgb20s-arch.img`, sha256 `1a782b5f…4214f1dd9`).
+- Riesgo 8 confirmado y resuelto: el DTS de ROCKNIX deja `otg-port` del PHY en `disabled` (`Requested PHY is disabled`, UDC `not attached`). Se agregó `&u2phy_otg { status = "okay"; }` al DTS del repo; en la SD se parcheó solo el DTB (el original quedó como `.dtb.orig`). **Falta recompilar la imagen** para que lo traiga.
+- El gadget **no enumera con cable USB-C a USB-C** (la Mac no entrega VBUS: el cargador marca `ONLINE=0`; probablemente faltan resistencias en CC del puerto OTG, sin verificar). **Con cable USB-A a USB-C funciona.** El puerto marcado OTG es el de datos; el DC solo carga.
+- Acceso: `ssh -i ~/.ssh/powkiddy alarm@10.55.0.1` (la Mac recibe 10.55.0.15). La clave se agregó a mano por serie (`/dev/cu.usbmodem*`). El SSH no acepta contraseña.
+- Estado: kernel 7.1.2-rgb20s, sistema `running` sin fallas, ALSA ve `rk817int`, input `event0-3` y `js0`. Raíz de 930 MB sin agrandar (`GROW_ROOT=no`). Sin reloj: la fecha queda en 2026-11-10.
+- ✅ Raíz agrandada a 15 GB (`GROW_ROOT=yes`). ✅ `sdl2-compat` 2.32.74 + `sdl3` 3.4.20 instalados con `pacman -Syu` (175 paquetes, 867 MB usados).
+- Internet en la consola sin tocar la red de la Mac: túnel SOCKS inverso, `ssh -R 1080 …` y `env all_proxy=socks5h://127.0.0.1:1080 pacman …`. Antes, poner la hora (`sudo date -u -s`) porque no hay RTC.
+- Bugs de la imagen encontrados: (1) faltaba el llavero de pacman (`build-image.sh` lo borra y nadie lo recreaba): arreglado en `firstboot.sh`, sin probar en imagen nueva; (2) el kernel no trae Landlock y pacman 7 falla con su sandbox: por ahora `--disable-sandbox` (lo corre el usuario); **pendiente** `CONFIG_SECURITY_LANDLOCK=y` y agregarlo a `CONFIG_LSM`. `sudo` pide la contraseña de `alarm`.
+- Siguiente (viejo): `GROW_ROOT=yes`, instalar `sdl2` (sin internet en la consola: NAT por USB desde la Mac o `pacman -U`), build aarch64 en la Mac (el contenedor de Omarchy no está; `cargo zigbuild` o adaptar), primer deploy del groovebox, inventario y medición de audio.
+
+5. ✅ **Antes de flashear:** con la SD actual montada en la Mac, respaldar en solo lectura la partición de arranque (DTB, U-Boot, config) y, si hay espacio, una imagen completa con `dd`. Es la única referencia de un sistema que arranca en esta consola.
+6. ✅ Flashear la imagen de Arch (2026-11-20).
 7. Primer arranque. Sin Wi-Fi ni serie, el diagnóstico depende de: la pantalla, logs que el sistema deje en la partición de arranque y, si funciona, SSH por USB gadget.
 8. **`device-ops`**: inventario en Arch (adaptar `infra/device/inventory.sh` o correrlo por SSH). Primer deploy del H0 y medición de latencia de audio.
 
@@ -53,7 +64,7 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 - [ ] (Opcional, solo para `just qemu-boot`) `sudo pacman -S qemu-system-aarch64`
 - [x] Aceptar el ADR 0008 (compilación cruzada)
 - [x] Aceptar los ADR 0004, 0005 y 0009 a 0012 (2026-11-20)
-- [ ] Respaldar la SD actual y flashear `rgb20s-arch.img`
+- [x] Respaldar la SD actual y flashear `rgb20s-arch.img` (2026-11-20)
 - [x] Reiniciar Claude Code para que carguen los agentes, las skills y el `CLAUDE.md`
 - [x] Actualizar el remote (el repo se renombró):
       `git remote set-url origin git@github.com:gonzalobertomeu/powkiddy-rgb20s-hack.git`
@@ -62,7 +73,7 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
   - `/plugin install context7@claude-plugins-official`, para documentación actualizada de crates (usa un servicio externo)
 - [x] Responder (2026-11-19):
   - Sistema actual: ArkOS o dArkOS (a confirmar cuál)
-  - Segunda microSD: no, y no hace falta conservar el sistema original
+  - Segunda microSD: sí, la consola usa dos (TF1 sistema, TF2 datos; corregido el 2026-11-20). No hace falta conservar el sistema original
   - Lector de microSD: sí. También hay auriculares o parlante para probar el audio
 - [x] Wi-Fi: la consola no tiene. Hay que usar la SD o USB OTG
 

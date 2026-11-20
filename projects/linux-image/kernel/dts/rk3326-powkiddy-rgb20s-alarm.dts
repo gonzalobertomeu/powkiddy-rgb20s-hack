@@ -23,3 +23,13 @@
 &usb20_otg {
 	role-switch-default-mode = "peripheral";
 };
+
+/*
+ * PHY del puerto OTG: el DTS de ROCKNIX lo deja en "disabled". Sin él, dwc2 queda
+ * en modo periférico pero nunca detecta la conexión: "rockchip-usb2phy: Requested
+ * PHY is disabled" y /sys/class/udc/ff300000.usb en "not attached" con el cable
+ * puesto en el USB-C marcado OTG (primer arranque en la consola, 2026-11-20).
+ */
+&u2phy_otg {
+	status = "okay";
+};

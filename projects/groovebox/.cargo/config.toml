@@ -1,0 +1,4 @@
+# En macOS (Apple Silicon) Homebrew instala SDL2 en /opt/homebrew/lib, que el
+# linker no busca por defecto. Solo afecta al build nativo del simulador.
+[target.aarch64-apple-darwin]
+rustflags = ["-L", "native=/opt/homebrew/lib"]

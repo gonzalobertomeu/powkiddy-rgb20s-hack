@@ -4,6 +4,8 @@
 #     a ~alarm/.ssh/authorized_keys. Permite entrar sin recompilar la imagen.
 #  2. GROW_ROOT=yes en /boot/rgb20s.conf: agranda la partición raíz al tamaño de la tarjeta
 #     (una sola vez; deja /var/lib/rgb20s/grown).
+#  3. Llavero de pacman: la imagen se arma sin él (build-image.sh lo borra para que cada
+#     consola tenga su propia clave privada). Se crea acá si falta.
 set -u
 . /usr/local/lib/rgb20s/common.sh
 
@@ -35,6 +37,14 @@ if [ "$(conf_get GROW_ROOT no)" = yes ] && [ ! -e /var/lib/rgb20s/grown ]; then
     log "raíz agrandada: $(df -h / | tail -n1)"
   else
     log "ERROR: no se pudo agrandar la raíz (queda como estaba)"
+  fi
+fi
+# --- 3. llavero de pacman ---
+if [ ! -s /etc/pacman.d/gnupg/pubring.gpg ] && [ ! -s /etc/pacman.d/gnupg/pubring.kbx ]; then
+  if pacman-key --init >/dev/null 2>&1 && pacman-key --populate archlinuxarm >/dev/null 2>&1; then
+    log "llavero de pacman inicializado"
+  else
+    log "ERROR: no se pudo inicializar el llavero de pacman"
   fi
 fi
 exit 0
