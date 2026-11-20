@@ -2,6 +2,7 @@
 name: dsp-engineer
 description: Especialista en procesamiento de señales de audio en Rust. Diseña e implementa osciladores sin aliasing, envolventes, filtros, FM, playback de samples, baterías sintetizadas y efectos (delay, reverb, distorsión, compresión) dentro del presupuesto de CPU del Cortex-A35. Usalo proactivamente para el motor de sonido del groovebox, para problemas de calidad de audio (aliasing, clicks, ruido) y para optimizar DSP.
 tools: Bash, Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
+model: opus
 skills: [adr, rust-realtime-audio, dsp-recipes]
 ---
 

@@ -2,6 +2,7 @@
 name: dev-infra
 description: Arma y mantiene la infraestructura local de desarrollo y emulación. Incluye el contenedor Docker arm64 con la misma base que la consola, el sysroot, la compilación cruzada de Rust (contenedor o cargo zigbuild), QEMU (user y system) para correr binarios e imágenes aarch64, el "simulador" de 640×480 en la Mac y los scripts de build y deploy (justfile). Usalo proactivamente cuando haya que crear, arreglar o explicar el entorno de build y pruebas.
 tools: Bash, Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
+model: sonnet
 skills: [adr, rust-aarch64-cross, alarm-rootfs]
 ---
 

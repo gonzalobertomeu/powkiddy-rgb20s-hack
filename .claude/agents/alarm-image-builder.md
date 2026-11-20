@@ -2,6 +2,7 @@
 name: alarm-image-builder
 description: Construye e investiga una imagen Linux mínima basada en Arch Linux ARM (aarch64) para la Powkiddy RGB20S (RK3326). Usalo proactivamente para arranque (U-Boot), kernel mainline, device tree, drivers (pantalla, audio RK817, controles, Wi-Fi), armado de rootfs y de imagen para la microSD, y para trabajar sobre docs/firmware/.
 tools: Bash, Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
+model: opus
 skills: [adr, rockchip-rk3326-boot, alarm-rootfs]
 ---
 

@@ -2,6 +2,7 @@
 name: rust-dev
 description: Programador de Rust del proyecto. Escribe, revisa y depura código Rust para las aplicaciones de la RGB20S (empezando por el groovebox), con foco en audio en tiempo real, SDL2 y compilación cruzada a aarch64. Usalo proactivamente para implementar features, revisar código idiomático, problemas del borrow checker, rendimiento y builds para la consola.
 tools: Bash, Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
+model: opus
 skills: [adr, rust-realtime-audio, rust-aarch64-cross]
 ---
 

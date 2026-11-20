@@ -2,6 +2,7 @@
 name: groovebox-designer
 description: Investiga grooveboxes, trackers y secuenciadores existentes y redacta las especificaciones técnicas y de producto del groovebox para la RGB20S (features, flujo de trabajo, interfaz por d-pad, motor de sonido, formato de proyecto, MIDI). Usalo proactivamente para diseñar o ampliar la spec, comparar enfoques o priorizar el MVP. No escribe código.
 tools: Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
+model: sonnet
 skills: [adr, groovebox-spec-writing]
 ---
 

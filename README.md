@@ -32,7 +32,6 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
 | Skill | Usada por |
 |---|---|
 | `adr` | todos (menos device-ops) |
-| `rust-mentor` | ninguno por ahora (el usuario no quiere modo aprendizaje) |
 | `rust-realtime-audio` | rust-dev, dsp-engineer |
 | `rust-aarch64-cross` | rust-dev, dev-infra |
 | `rockchip-rk3326-boot` | alarm-image-builder |

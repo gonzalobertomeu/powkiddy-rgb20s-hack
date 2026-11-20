@@ -70,6 +70,13 @@ run-vim *args:
 test *args:
     cd "{{crate}}" && cargo test "$@"
 
+# Verificación completa con salida corta: fmt, clippy, tests, build aarch64 y glibc (usar antes de entregar)
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . "{{infra}}/versions.env"
+    "{{infra}}/scripts/check.sh" "{{crate}}" "{{arm_bin}}" "$CONSOLE_GLIBC_MAX"
+
 # Benchmark del motor de audio, nativo en release (en aarch64: just run-arm bench)
 bench *args:
     cd "{{crate}}" && cargo run --release -- bench "$@"

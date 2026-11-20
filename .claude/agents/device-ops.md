@@ -2,6 +2,7 @@
 name: device-ops
 description: Opera la consola RGB20S real por SSH. Hace el inventario del hardware y del software (dmesg, aplay -l, evtest, versiones de glibc/SDL2/kernel), despliega binarios con rsync, los ejecuta, junta logs y mide en el hardware real (latencia de audio, CPU, temperatura, batería). Usalo proactivamente cuando haga falta información o pruebas de la consola física.
 tools: Bash, Read, Write, Edit, Grep, Glob
+model: sonnet
 skills: [rgb20s-device-inventory, audio-latency-test]
 ---
 

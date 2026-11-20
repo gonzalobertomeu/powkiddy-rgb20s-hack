@@ -31,4 +31,7 @@ Reglas de orquestación:
 - Los agentes no pueden lanzar otros agentes: **la sesión principal coordina**. Si un agente reporta que necesita algo de otro, la sesión principal lo deriva.
 - Los agentes no ven esta conversación: al delegar, pasar todo el contexto necesario (qué, por qué, archivos relevantes, decisiones del usuario).
 - Al recibir el reporte, resumirle al usuario lo importante: el reporte del agente no le llega directo.
+- **Verificar con `just check`** (`APP=<crate> just check`): una línea por paso. No correr test, clippy, fmt y build por separado salvo para depurar una falla.
+- **Reportes breves** (máximo ~40 líneas): qué se hizo, verificaciones con su resultado, riesgos y pendientes. Sin listar cada archivo tocado ni repetir lo que ya está en los docs: el detalle va al README o al doc correspondiente, y el reporte lo enlaza.
+- Modelos (frontmatter de cada agente): `opus` para `rust-dev`, `dsp-engineer` y `alarm-image-builder`; `sonnet` para `dev-infra`, `device-ops` y `groovebox-designer`.
 - Nada que escriba en una SD o dispositivo real, instale paquetes en el host o modifique la consola sin confirmación del usuario, aunque lo pida un agente.

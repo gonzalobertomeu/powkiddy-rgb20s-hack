@@ -50,6 +50,7 @@ Se pasan como `just VAR=valor receta` o por entorno.
 |---|---|
 | `just run [args]` | Nivel 1: corre la app nativa en la Mac, en el simulador de 640×480 |
 | `just test [args]` | `cargo test` nativo |
+| `just check` | Verificación completa con salida corta (fmt, clippy, tests, build aarch64, glibc): una línea por paso y, si falla, solo los errores |
 | `just build-arm [args]` | Compila release para `aarch64-unknown-linux-gnu` en el contenedor `rgb20s-cross` |
 | `just check-arm` | Muestra arquitectura, glibc máxima requerida y librerías dinámicas, y compara con la glibc de la consola |
 | `just run-arm [args]` | Nivel 2: corre el binario aarch64 con `qemu-aarch64-static` dentro del contenedor (SDL `offscreen`; sin placa ALSA, así que la app sigue sin audio). Reenvía `GROOVEBOX_*` y `RGB20S_*`; la salida va a `RUN_ARM_OUT` |
