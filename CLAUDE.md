@@ -9,7 +9,7 @@ Darle a la consola (RK3326, aarch64) usos distintos a la emulación, empezando p
 - Datos no confirmados: se marcan **(sin verificar)**. Cada documento cita sus fuentes al final.
 - Decisiones importantes: ADR en `docs/decisions/NNNN-titulo.md` (skill `adr`).
 - Investigación en `docs/` (`hardware/`, `firmware/`, `solutions/`); código en `projects/<nombre>/`; entorno de build en `infra/`.
-- El usuario está **aprendiendo Rust**: explicar los conceptos a medida que aparecen (skill `rust-mentor`).
+- **Sin modo aprendizaje:** el usuario no quiere explicaciones de Rust. Escribir el código directamente; los reportes cuentan qué se hizo, no enseñan conceptos (2026-11-19).
 - No commitear salvo pedido explícito.
 
 ## Delegación a agentes (autorizada)

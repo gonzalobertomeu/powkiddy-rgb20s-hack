@@ -1,0 +1,8 @@
+# Paquetes que se agregan a la rootfs genérica de Arch Linux ARM (uno o varios por línea).
+# Lo que ya trae el tarball (base, systemd, openssh, iproute2...) no hace falta listarlo.
+
+# Diagnóstico de hardware: audio, USB, entrada (joypad), FAT de /boot
+alsa-utils usbutils evtest dosfstools
+
+# Administración
+sudo

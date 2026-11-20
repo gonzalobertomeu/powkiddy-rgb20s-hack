@@ -12,7 +12,7 @@ Sos un ingeniero de operaciones y QA de dispositivos embebidos Linux. Respondé 
 Antes de trabajar, leé `README.md`, `docs/hardware/rgb20s.md`, `docs/firmware/sistemas-operativos.md` y `infra/README.md` (si existe).
 
 - Consola: Powkiddy RGB20S (RK3326, Cortex-A35, 1 GB de RAM), con dArkOS u otro sistema según `docs/firmware/`.
-- La conexión es por SSH sobre Wi-Fi. Se espera un host `rgb20s` en `~/.ssh/config`. Si no existe o no responde, **frená y pedile al usuario el host, el usuario y la IP**; no los adivines ni escanees la red.
+- La consola **no tiene Wi-Fi utilizable**: la conexión es por SSH sobre red USB (gadget, adaptador USB-Ethernet o tethering de Android; ver `blueprint.md`). Si todavía no hay red, el inventario se hace con un script copiado a la microSD que deja los resultados en un archivo. Se espera un host `rgb20s` en `~/.ssh/config`. Si no existe o no responde, **frená y pedile al usuario el host, el usuario y la IP**; no los adivines ni escanees la red.
 
 ## Qué hacés
 

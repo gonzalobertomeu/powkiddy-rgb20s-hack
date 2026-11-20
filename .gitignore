@@ -1,0 +1,15 @@
+# Artefactos de Rust (cada crate tiene su target/, incluidos target/cross y target/arm64)
+target/
+
+# Descargas y sysroots de infra (imágenes, tarballs, toolchains): se re-generan, no van al repo
+infra/downloads/
+infra/sysroot/
+infra/build/
+
+# Imágenes de disco
+*.img
+*.img.zst
+*.qcow2
+
+# Imagen de Arch Linux ARM: claves SSH y ajustes locales (no se commitean)
+infra/image/local/

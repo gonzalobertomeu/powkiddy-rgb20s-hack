@@ -1,0 +1,19 @@
+#!/bin/bash
+# Lanzador de @APP@ para ArkOS/dArkOS: EmulationStation lista los .sh de la carpeta
+# "ports" y los ejecuta (convención de PortMaster) (sin verificar en la RGB20S).
+# Generado por infra/scripts/deploy-sd.sh: no editar en la SD, editar la plantilla.
+
+DIR="$(cd "$(dirname "$0")/@APP@" && pwd)"
+cd "$DIR" || exit 1
+
+# Sin red no hay SSH: el log queda en la SD para leerlo después desde la Mac.
+LOG="$DIR/last-run.log"
+{
+  echo "=== $(date) ==="
+  uname -a
+  # Las SD en FAT/exFAT no guardan el bit de ejecución: se copia a /tmp y se ejecuta desde ahí.
+  cp -f "./@BIN@" /tmp/@BIN@ && chmod +x /tmp/@BIN@
+  /tmp/@BIN@ "$@"
+  echo "salida: $?"
+} > "$LOG" 2>&1
+sync

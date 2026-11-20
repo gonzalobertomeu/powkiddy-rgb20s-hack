@@ -1,0 +1,77 @@
+# Demo del H3 (flujo F1 de la spec): poner un bombo, Start, agregar caja y hi-hats mientras
+# suena, mute, ver el cabezal en la Grilla y en la Frase, cambiar el tempo y parar.
+# Uso sin placa de sonido ni escritorio (motor al ritmo real, sin salida):
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=null GROOVEBOX_SCRIPT=.../demo-h3.txt groovebox
+
+wait 300
+
+# BOMBO en 1, 5, 9 y 13
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+
+# Start: suena en loop la sección
+tap start
+wait 700
+shot h3-grilla-bombo.bmp
+
+# CAJA en 5 y 13 mientras suena
+tap down
+tap left 8
+tap a
+tap right 8
+tap a
+
+# HH-CER en los pasos impares
+tap down
+tap left 12
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+wait 500
+shot h3-grilla-beat.bmp
+
+# Mute del bombo (Select + X en la pista 1) y tempo +4
+tap up 2
+press select
+tap x
+tap r2 4
+release select
+wait 400
+shot h3-grilla-mute.bmp
+press select
+tap x
+release select
+
+# Frase de la CAJA con el cabezal
+tap down
+press select
+tap right 2
+release select
+wait 450
+shot h3-frase.bmp
+
+# Que pase un intervalo del log de carga (cada 10 s)
+wait 9000
+
+# Stop
+tap start
+wait 300
+shot h3-parado.bmp
+quit

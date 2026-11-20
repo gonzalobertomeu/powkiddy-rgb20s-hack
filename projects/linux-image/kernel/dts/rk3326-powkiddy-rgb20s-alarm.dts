@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Powkiddy RGB20S para la imagen Arch Linux ARM del proyecto.
+ *
+ * Parte del DTS de ROCKNIX sin cambios (kernel/rocknix/dts/, commit fijado en
+ * infra/image/sources.lock) y solo ajusta lo necesario para la imagen:
+ *
+ * - USB OTG (dwc2): arranca en modo periférico (gadget) en vez de host. El
+ *   rk3326.dtsi de ROCKNIX declara `usb-role-switch` con modo por defecto "host";
+ *   con el role switch, dwc2 fuerza la sesión B por registros (GOTGCTL) y no
+ *   depende del pin ID ni del PHY. rgb20s-usb.service puede pasarlo a "host"
+ *   según /boot/rgb20s.conf (USB_ROLE=host), sin recompilar.
+ *   (sin verificar) que el USB-C esté cableado al puerto OTG del PHY: si está en
+ *   el puerto host (EHCI/OHCI), el modo periférico no hace nada visible.
+ */
+
+#include "rk3326-powkiddy-rgb20s.dts"
+
+/ {
+	model = "Powkiddy RGB20S (Arch Linux ARM)";
+};
+
+&usb20_otg {
+	role-switch-default-mode = "peripheral";
+};

@@ -1,0 +1,40 @@
+# Ajustes sobre la config del kernel de ROCKNIX para RK3326 (rocknix/linux.aarch64.conf).
+# Se aplica con scripts/kconfig/merge_config.sh y después `make olddefconfig`.
+# build-kernel.sh verifica que cada línea de acá quede igual en el .config final.
+
+# Identificación: uname -r = 7.1.2-rgb20s
+CONFIG_LOCALVERSION="-rgb20s"
+# CONFIG_LOCALVERSION_AUTO is not set
+
+# ROCKNIX deja un marcador que su build reemplaza; acá no hay initramfs embebido
+CONFIG_INITRAMFS_SOURCE=""
+
+# Ante un panic, quedarse quieto con el mensaje en pantalla (ROCKNIX reinicia a 1 s).
+# Sin consola serie, la pantalla es el único lugar donde se ve.
+CONFIG_PANIC_TIMEOUT=0
+
+# Gadget USB: además de NCM/ECM/RNDIS (ya en ROCKNIX), puerto serie ACM para tener
+# un login por /dev/ttyACM0 en la Mac aunque la red falle. MIDI y HID para más adelante.
+CONFIG_USB_CONFIGFS_ACM=y
+CONFIG_USB_CONFIGFS_SERIAL=y
+CONFIG_USB_CONFIGFS_F_MIDI=y
+CONFIG_USB_CONFIGFS_F_HID=y
+CONFIG_USB_CONFIGFS_EEM=y
+
+# Red USB en modo host (tethering de Android, adaptadores): ya están como módulos en ROCKNIX;
+# se fijan acá para que un cambio en la base no los saque.
+CONFIG_USB_USBNET=m
+CONFIG_USB_NET_CDCETHER=m
+CONFIG_USB_NET_CDC_NCM=m
+CONFIG_USB_NET_RNDIS_HOST=m
+CONFIG_USB_RTL8152=m
+
+# systemd: requisitos y comodidades
+CONFIG_AUTOFS_FS=y
+CONFIG_FHANDLE=y
+CONFIG_CGROUPS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+CONFIG_PSTORE=y

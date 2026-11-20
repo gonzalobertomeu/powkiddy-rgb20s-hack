@@ -1,0 +1,11 @@
+[Unit]
+Description=RGB20S: claves SSH desde /boot y agrandado opcional de la raíz
+After=boot.mount local-fs.target
+Before=sshd.service rgb20s-usb.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/rgb20s/firstboot.sh
+
+[Install]
+WantedBy=multi-user.target

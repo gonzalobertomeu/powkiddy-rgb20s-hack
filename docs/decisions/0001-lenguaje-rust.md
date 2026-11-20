@@ -5,7 +5,7 @@
 
 ## Contexto
 
-Hay que elegir un lenguaje para las aplicaciones propias, empezando por el [groovebox](../solutions/groovebox.md).
+Hay que elegir un lenguaje para las aplicaciones propias, empezando por el [groovebox](../solutions/groovebox/README.md).
 Las alternativas eran C (con SDL2) y Rust.
 
 ## Decisión
@@ -47,4 +47,4 @@ C o shell quedan solo para tareas puntuales de bajo nivel:
 ## Pendientes
 
 - [ ] Confirmar la versión de glibc y SDL2 de dArkOS
-- [ ] Elegir entre el contenedor arm64 y `cargo zigbuild`
+- [x] Elegir entre el contenedor arm64 y `cargo zigbuild` → decidido en el [ADR 0008](0008-compilacion-cruzada-contenedor-x86-multiarch.md) (contenedor x86_64 con gcc cruzado, aceptado)

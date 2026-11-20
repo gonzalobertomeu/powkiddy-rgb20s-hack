@@ -1,0 +1,81 @@
+# Demo del H5 con el proyecto demo (GROOVEBOX_DEMO=1): pantalla Canción, Start en la Canción
+# (modo canción), edición de la canción mientras suena, Grilla siguiendo la reproducción (y la
+# desalineación de la fila 2), Cadena con el cabezal, edición de la transposición, loop de cadena.
+# Uso sin placa de sonido ni escritorio (motor al ritmo real, sin salida):
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=null GROOVEBOX_DEMO=1 \
+#     GROOVEBOX_SCRIPT=.../demo-h5.txt groovebox
+# A 120 BPM una frase dura 2 s: los tiempos de las capturas cuentan desde el Start.
+
+wait 300
+
+# Canción parada: largos de las cadenas y aviso de la fila 2
+press select
+tap left
+release select
+wait 200
+shot h5-cancion-parada.bmp
+tap down 2
+wait 200
+shot h5-cancion-fila2.bmp
+tap up 2
+
+# Start en la Canción: la canción desde la fila 0
+tap start
+wait 2900
+shot h5-cancion-sonando.bmp
+
+# Mientras suena: una cadena nueva en la fila 3 (BOMBO) y se borra (A + B)
+tap down 3
+tap a
+wait 200
+shot h5-cancion-edicion.bmp
+press a
+tap b
+release a
+tap up 3
+
+# Grilla siguiendo la reproducción (fila 1, compases 5 y 6)
+press select
+tap right
+release select
+wait 4300
+shot h5-grilla-siguiendo.bmp
+
+# Fila 2: las palmas (cadena de 2) y los hi-hats cerrados (de 3) ya volvieron a la fila 0
+wait 10200
+shot h5-grilla-desalineada.bmp
+
+# Cadena del SINTE en la fila del cabezal del bombo, con su cabezal
+press select
+tap right
+release select
+tap r1 7
+wait 300
+shot h5-cadena.bmp
+
+# Transposición de la entrada bajo el cursor: +1 (A + →) y de vuelta (A + ←; A + B la pone en 0)
+tap right
+press a
+tap right
+release a
+wait 100
+shot h5-cadena-edicion.bmp
+press a
+tap left
+release a
+tap left
+
+# Stop y Start en la Cadena: loop de la cadena, solo el SINTE
+tap start
+tap start
+wait 2500
+shot h5-cadena-loop.bmp
+tap start
+
+# Proyecto: la opción "seguir reproducción"
+press select
+tap up
+release select
+wait 200
+shot h5-proyecto.bmp
+quit

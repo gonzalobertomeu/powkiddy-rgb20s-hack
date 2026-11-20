@@ -14,4 +14,5 @@ projects/<nombre>/
 
 | Proyecto | Solución | Estado |
 |---|---|---|
-| _(ninguno todavía)_ | | |
+| [groovebox](groovebox/README.md) | [Groovebox](../docs/solutions/groovebox/README.md) | H0: ventana y tono (sin probar en la consola) |
+| [linux-image](linux-image/README.md) | [Arch Linux ARM](../docs/firmware/arch-linux-arm.md) | Imagen armada en la Mac, sin arrancar en la consola |

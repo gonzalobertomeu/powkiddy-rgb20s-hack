@@ -1,0 +1,34 @@
+# Mapeo estilo Vim para el simulador: hjkl es la cruz, la mano izquierda queda en la fila
+# central (a s d f) para los botones frontales y Espacio hace de Select (como un <leader>).
+# Uso: `just run-vim` (o `just KEYMAP=infra/sim/keymap-vim.toml run`).
+# Nombres de tecla de SDL_GetKeyName. El mapeo estándar sigue en keymap.toml.
+
+[buttons]
+up     = "K"
+down   = "J"
+left   = "H"
+right  = "L"
+a      = "F"          # poner/editar; mantener F + hjkl edita el valor
+b      = "D"          # mantener D + hjkl salta
+x      = "S"          # escuchar
+y      = "A"          # seleccionar / F + A clona
+l1     = "E"          # pista anterior
+r1     = "R"          # pista siguiente
+l2     = "W"          # sección/frase anterior
+r2     = "T"          # sección/frase siguiente
+select = "Space"      # Espacio + hjkl cambia de pantalla
+start  = "Return"
+fn     = "Escape"
+
+# Sticks: las flechas mueven el izquierdo (hjkl quedó para la cruz).
+[left_stick]
+up    = "Up"
+down  = "Down"
+left  = "Left"
+right = "Right"
+
+[right_stick]
+up    = "Keypad 8"
+down  = "Keypad 2"
+left  = "Keypad 4"
+right = "Keypad 6"

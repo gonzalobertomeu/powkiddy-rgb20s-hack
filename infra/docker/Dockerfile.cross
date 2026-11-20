@@ -1,0 +1,43 @@
+# Opción B (elegida, ver docs/decisions/0008): contenedor x86_64 con gcc cruzado
+# y las librerías arm64 de Debian trixie instaladas por multiarch.
+# rustc corre nativo (rápido) y el linkeo usa la glibc, SDL2 y ALSA de trixie (la base de dArkOS).
+ARG DEBIAN_IMAGE
+FROM --platform=linux/amd64 ${DEBIAN_IMAGE}
+
+ARG DEBIAN_SNAPSHOT
+ARG RUST_VERSION
+ARG RUSTUP_VERSION
+ARG RUSTUP_SHA256_AMD64
+
+COPY apt-snapshot.sh /usr/local/sbin/apt-snapshot.sh
+RUN /usr/local/sbin/apt-snapshot.sh "${DEBIAN_SNAPSHOT}" \
+ && dpkg --add-architecture arm64 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl build-essential pkgconf file binutils-aarch64-linux-gnu \
+      gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+      libc6:arm64 libsdl2-dev:arm64 libasound2-dev:arm64 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Rust con rustup-init fijado por versión y sha256.
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN curl -fsSLo /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+ && echo "${RUSTUP_SHA256_AMD64}  /tmp/rustup-init" | sha256sum -c - \
+ && chmod +x /tmp/rustup-init \
+ && /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
+      --target aarch64-unknown-linux-gnu \
+ && rm /tmp/rustup-init \
+ && chmod -R a+rwX /opt/cargo /opt/rustup
+
+# Configuración de la compilación cruzada (equivale a un .cargo/config.toml).
+ENV CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-cpu=cortex-a35" \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    PKG_CONFIG_aarch64_unknown_linux_gnu=aarch64-linux-gnu-pkg-config \
+    PKG_CONFIG_ALLOW_CROSS=1
+# Con libc6:arm64 instalada, el loader /lib/ld-linux-aarch64.so.1 existe dentro del contenedor:
+# los binarios aarch64 corren directo con el binfmt del host (qemu-aarch64-static, flag F).
+
+WORKDIR /work

@@ -13,7 +13,7 @@
 | Pantalla | IPS 3.5", 640×480 (4:3) |
 | PMIC / audio | **RK817** con códec integrado, como en la Odroid Go Advance **(sin verificar en la RGB20S)** |
 | Almacenamiento | Sin memoria interna. Dos microSD: la primera (TF1) arranca el sistema, la segunda (TF2) guarda datos |
-| Conectividad | **Wi-Fi integrado**, USB-C con OTG |
+| Conectividad | USB-C con OTG. **Sin Wi-Fi utilizable**: la nota de lanzamiento anuncia Wi-Fi, pero según la experiencia del usuario la consola no tiene antena. Sí se conectó a internet con el *USB tethering* de un Android (ver abajo) |
 | Audio | Parlante y jack de 3.5 mm |
 | Controles | D-pad, botones frontales, gatillos y dos sticks analógicos |
 | Batería | 3500 mAh |
@@ -22,6 +22,7 @@
 
 - **No se puede "brickear"**: al no tener memoria interna, todo vive en la microSD. Si algo falla, se cambia la tarjeta.
 - El **Cortex-A35** es el núcleo ARMv8 más chico. Rinde algo menos que un A53 a igual frecuencia. Para audio en tiempo real conviene usar C/C++ y aprovechar NEON.
+- **Red por USB (confirmado por el usuario, 2026-11-19):** con el *USB tethering* de un Android, la consola tuvo internet. El teléfono actúa como gadget RNDIS/NCM y la consola como **host USB**, así que el OTG funciona en modo host y el sistema (ArkOS/dArkOS) tiene un driver de red USB (`rndis_host` o `cdc_ether`) **(sin verificar cuál)**. Por la misma razón, un adaptador USB-Ethernet probablemente también funcione **(sin verificar)**.
 - **USB-C OTG**: podría funcionar como host (para teclados MIDI, audio USB o adaptadores de red) y quizás como gadget (MIDI o HID hacia un PC). El modo gadget depende del kernel y del cableado del puerto **(sin verificar)**.
 - Los **sticks analógicos** sirven como controles expresivos (pitch, filtro).
 
@@ -38,11 +39,14 @@ Ojo: la **RGB20SX** es otra consola, con un chip distinto (RK3566).
 ## Pendientes
 
 - [ ] Confirmar el códec de audio, abriendo la consola o con `dmesg` / `aplay -l`
-- [ ] Confirmar el chip Wi-Fi (`lsmod`, `dmesg`)
+- [ ] Confirmar si hay un chip Wi-Fi sin antena o si directamente no hay chip (`lsmod`, `dmesg`, `lsusb`)
+- [ ] Identificar el driver de red USB que usa el tethering (`lsmod`, `dmesg` al conectar el teléfono)
 - [ ] Confirmar si el puerto USB-C soporta modo periférico (gadget)
 - [ ] Revisar `/proc/cpuinfo` y medir el rendimiento real
 
 ## Fuentes
+
+- Experiencia del usuario con la consola (2026-11-19): sin antena Wi-Fi; internet por USB tethering de Android.
 
 - [Notebookcheck: RGB20S revealed (Wi-Fi, 2× microSD)](https://www.notebookcheck.net/Powkiddy-RGB20S-New-retro-handheld-revealed-with-USB-Type-C-Wi-Fi-and-two-microSD-card-readers.620381.0.html)
 - [handhelds.wiki: Powkiddy RGB20S](https://handhelds.wiki/Powkiddy_RGB20S)

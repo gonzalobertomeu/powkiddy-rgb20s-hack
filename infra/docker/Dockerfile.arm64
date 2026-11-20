@@ -1,0 +1,29 @@
+# Opción A (referencia, más lenta): contenedor arm64 completo emulado con qemu-user.
+# Todo (rustc incluido) corre bajo QEMU. Sirve para verificar o para correr cosas "como en la consola".
+ARG DEBIAN_IMAGE
+FROM --platform=linux/arm64 ${DEBIAN_IMAGE}
+
+ARG DEBIAN_SNAPSHOT
+ARG RUST_VERSION
+ARG RUSTUP_VERSION
+ARG RUSTUP_SHA256_ARM64
+
+COPY apt-snapshot.sh /usr/local/sbin/apt-snapshot.sh
+RUN /usr/local/sbin/apt-snapshot.sh "${DEBIAN_SNAPSHOT}" \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl build-essential pkgconf file libsdl2-dev libasound2-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN curl -fsSLo /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/aarch64-unknown-linux-gnu/rustup-init" \
+ && echo "${RUSTUP_SHA256_ARM64}  /tmp/rustup-init" | sha256sum -c - \
+ && chmod +x /tmp/rustup-init \
+ && /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
+ && rm /tmp/rustup-init \
+ && chmod -R a+rwX /opt/cargo /opt/rustup
+
+ENV CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-cpu=cortex-a35"
+WORKDIR /work

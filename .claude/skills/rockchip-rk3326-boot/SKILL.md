@@ -5,6 +5,8 @@ description: Cadena de arranque del RK3326 y cómo armar U-Boot, kernel mainline
 
 # Arranque del RK3326 (RGB20S)
 
+> Correcciones verificadas por `alarm-image-builder` (2026-11-19): ver la tabla en `docs/firmware/arch-linux-arm.md#correcciones-a-las-skills-del-proyecto`. Con el defconfig de ROCKNIX hace falta un `boot.scr`.
+
 > Verificá cada dato contra la documentación oficial de U-Boot (`doc/board/rockchip/rockchip.rst`) y del kernel antes de escribir una imagen. Lo marcado **(sin verificar)** no se probó en esta consola.
 
 ## Cadena de arranque
@@ -20,7 +22,7 @@ BootROM (en el SoC) ─► busca un idbloader en la SD, en el sector 64
 
 ## U-Boot mainline
 
-- Defconfig de referencia: `odroid-go2-rk3326_defconfig` (Odroid Go Advance, mismo SoC). Para la RGB20S hace falta su device tree o adaptar el de la OGA **(sin verificar)**.
+- Defconfig de referencia: `odroid-go2_defconfig`; la imagen del proyecto usa `rk3326-handheld_defconfig` de ROCKNIX con el flujo miniloader de rkbin (ver `docs/firmware/arch-linux-arm.md` y ADR 0009) (Odroid Go Advance, mismo SoC). Para la RGB20S hace falta su device tree o adaptar el de la OGA **(sin verificar)**.
 - Insumos: `ROCKCHIP_TPL=<rkbin>/bin/rk33/rk3326_ddr_*.bin` y `BL31=<rkbin o TF-A>/bl31.elf`.
 - El build genera `u-boot-rockchip.bin`, que junta idbloader y u-boot.itb. Se escribe **sobre la `.img`**, nunca sobre una SD sin confirmación:
   ```sh
@@ -32,8 +34,8 @@ BootROM (en el SoC) ─► busca un idbloader en la SD, en el sector 64
 
 | Zona | Contenido |
 |---|---|
-| sector 0 | Tabla de particiones (GPT o MBR) |
-| sector 64 a ~16 MiB | `u-boot-rockchip.bin` |
+| sector 0 | Tabla de particiones (**solo MBR** con este U-Boot: el entorno en `0x4000` choca con la GPT) |
+| sector 64 a ~16 MiB | `u-boot-rockchip.bin` (flujo TPL/SPL) o, en el flujo miniloader que usa la imagen: `idbloader` en 64, `uboot.img` en 16384, `trust.img` en 24576 |
 | p1 (FAT32 o ext4, unos 256 MiB) | `/boot`: Image, dtbs, extlinux |
 | p2 (ext4) | rootfs |
 
@@ -42,14 +44,14 @@ BootROM (en el SoC) ─► busca un idbloader en la SD, en el sector 64
 LABEL rgb20s
   KERNEL /Image
   FDT /dtbs/rockchip/rk3326-powkiddy-rgb20s.dtb
-  APPEND root=PARTUUID=<uuid-p2> rw rootwait console=ttyS2,115200 quiet
+  APPEND root=PARTUUID=<uuid-p2> rw rootwait console=ttyS2,1500000 quiet
 ```
 La consola serial (`ttyS2`) es habitual en el RK3326 **(sin verificar en la RGB20S; puede no tener pads accesibles)**.
 
 ## Device tree
 
 - Fuente: `rk3326-powkiddy-rgb20s.dts` del árbol de **ROCKNIX** (no está en mainline). Comparar con `rk3326-odroid-go2.dts` y `rk3326-anbernic-rg351m.dtsi` de mainline.
-- Revisar en el DTS qué usa: panel (driver `panel-*`), joypad (`adc-joystick`, `gpio-keys` o un driver específico), códec, regulador de backlight, Wi-Fi (SDIO o USB, qué chip).
+- Revisar en el DTS qué usa: panel (driver `panel-*`), joypad (en la RGB20S: `rocknix-singleadc-joypad`, fuera de mainline; `gpio-keys` solo para volumen), códec, regulador de backlight, Wi-Fi (SDIO o USB, qué chip).
 
 ## Kernel mainline: opciones clave
 

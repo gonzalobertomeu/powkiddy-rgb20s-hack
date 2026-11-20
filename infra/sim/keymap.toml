@@ -1,0 +1,36 @@
+# Mapeo estándar teclado -> controles de la RGB20S para el simulador en la Mac.
+# Las apps lo pueden leer (ruta en la variable RGB20S_KEYMAP, que exporta `just run`)
+# o copiar la tabla. Los nombres de tecla son los de SDL_GetKeyName / sdl2::keyboard::Keycode::name().
+# En la consola los mismos botones llegan como eventos de gamepad de SDL (GameController):
+# la app tiene que traducir ambos a un único enum de botones.
+# Botones de la consola según docs/hardware/rgb20s.md; botón de función (F/Hotkey) (sin verificar).
+
+[buttons]
+up     = "Up"
+down   = "Down"
+left   = "Left"
+right  = "Right"
+a      = "X"
+b      = "Z"
+x      = "S"
+y      = "A"
+l1     = "Q"
+r1     = "W"
+l2     = "1"
+r2     = "2"
+select = "Right Shift"
+start  = "Return"
+fn     = "Escape"     # botón de función/hotkey (sin verificar que exista en la RGB20S)
+
+# Sticks analógicos: cada tecla manda el eje al extremo (-1.0 o +1.0).
+[left_stick]
+up    = "I"
+down  = "K"
+left  = "J"
+right = "L"
+
+[right_stick]
+up    = "Keypad 8"
+down  = "Keypad 2"
+left  = "Keypad 4"
+right = "Keypad 6"

@@ -1,0 +1,45 @@
+# Fuentes fijadas de la imagen Arch Linux ARM para la RGB20S.
+# Lo leen infra/image/scripts/*.sh. Cambiar una versión acá = volver a descargar y reconstruir.
+# Ver docs/firmware/arch-linux-arm.md y docs/decisions/0009..0012.
+
+# --- Kernel: mainline, misma versión que usa ROCKNIX para RK3326 (packages/linux/package.mk) ---
+LINUX_VERSION=7.1.2
+LINUX_URL=https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.2.tar.xz
+# Mismo valor en ROCKNIX (PKG_SHA256) y en https://cdn.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
+LINUX_SHA256=37198c93727be247c9fb5309bb86cd5e496c61e5322cd8c4eca9476bb0b5883f
+
+# --- U-Boot: mainline, misma versión que ROCKNIX (devices/RK3326/packages/u-boot/package.mk) ---
+UBOOT_VERSION=v2025.10
+UBOOT_URL=https://github.com/u-boot/u-boot/archive/refs/tags/v2025.10.tar.gz
+UBOOT_SHA256=5414ee86562abc5ed524c6dc5e092511ad281441020a88e7027de6e83fd16116
+
+# --- rkbin: blobs de Rockchip (DDR init, miniloader, BL31) y herramientas de empaquetado ---
+# Commit fijado por ROCKNIX (packages/tools/rkbin/package.mk). Cada archivo se verifica con su
+# hash de objeto git (git hash-object), que lo ata al commit, y con sha256.
+RKBIN_COMMIT=3e288fe814e059dd06833495f845cab04ac20a5c
+RKBIN_BASE=https://raw.githubusercontent.com/rockchip-linux/rkbin
+# formato: <ruta en rkbin> <sha1 de objeto git>
+RKBIN_FILES="
+bin/rk33/rk3326_ddr_333MHz_v2.12.bin 6d58776c090631eb3bcd3c93abf43b008ae78978
+bin/rk33/rk3326_miniloader_v1.40.bin 24c15c783b7d0bba76b83d736400091032803153
+bin/rk33/rk3326_bl31_v1.37.elf 28ad722d7d38a66e3fdfb068059791741f0dfb73
+tools/loaderimage ff56cf7cc9afefdbffb7397afa5fc8f073585f8f
+tools/trust_merger 3c748eac864f1016c6edde07696cf68c639cec12
+LICENSE f62330155a581ea22aed1c41ce9ca32eed23164f
+"
+
+# --- ROCKNIX: DTS, parches y driver de panel copiados en projects/linux-image/kernel/rocknix/ ---
+ROCKNIX_COMMIT=61690fa8042acf631922deb2c80e8574e96958d2
+
+# --- rocknix-joypad: driver del joypad (rocknix-singleadc-joypad), módulo externo ---
+JOYPAD_COMMIT=ac1be0fa0c4e1f7feb9a900fc428d7ac6014029c
+JOYPAD_URL=https://github.com/ROCKNIX/rocknix-joypad/archive/ac1be0fa0c4e1f7feb9a900fc428d7ac6014029c.tar.gz
+# Valor de ROCKNIX (packages/linux-drivers/rocknix-joypad/package.mk)
+JOYPAD_SHA256=fe66820546d4477a01c52363c11d2bd471eb36d036b8cc652f7ab8e123d294c9
+
+# --- Arch Linux ARM: tarball genérico aarch64 ---
+# El "latest" cambia sin aviso y ALARM no guarda versiones viejas: se verifica md5 (publicado)
+# y firma GPG, y el sha256 del que se usó queda en infra/downloads/alarm/USED.sha256.
+ALARM_URL=http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz
+# Clave "Arch Linux ARM Build System" (https://archlinuxarm.org/about/package-signing)
+ALARM_KEY_FPR=68B3537F39A313B3E574D06777193F152BDBE6A6

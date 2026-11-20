@@ -1,0 +1,16 @@
+[Unit]
+Description=RGB20S: copia el diagnóstico del arranque a /boot/logs (y el journal al apagar)
+After=multi-user.target boot.mount rgb20s-usb.service
+Requires=boot.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Unos segundos para que aparezcan la red USB, el audio y la pantalla
+ExecStartPre=/usr/bin/sleep 10
+ExecStart=/usr/local/lib/rgb20s/bootlog.sh boot
+ExecStop=/usr/local/lib/rgb20s/bootlog.sh shutdown
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

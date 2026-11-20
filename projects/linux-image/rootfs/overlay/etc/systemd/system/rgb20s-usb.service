@@ -1,0 +1,15 @@
+[Unit]
+Description=RGB20S: rol del USB-C y gadget USB (red + serie)
+Documentation=file:///usr/local/lib/rgb20s/usb.sh
+After=sys-kernel-config.mount boot.mount
+Wants=sys-kernel-config.mount
+Before=sshd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/rgb20s/usb.sh start
+ExecStop=/usr/local/lib/rgb20s/usb.sh stop
+
+[Install]
+WantedBy=multi-user.target

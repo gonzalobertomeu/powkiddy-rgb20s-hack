@@ -1,0 +1,51 @@
+# Demo del H2: X escucha cada pista con su instrumento real, un acorde en SINTE dispara
+# 4 voces, una ráfaga llena la bolsa, y la carga del motor se ve en la barra y en Proyecto.
+# Uso: GROOVEBOX_SCRIPT=projects/groovebox/scripts/demo-h2.txt just run
+
+wait 300
+
+# Escuchar las 8 pistas (1 BOMBO ... 8 SINTE) con X
+tap x
+wait 300
+tap down
+tap x
+wait 300
+tap down
+tap x
+wait 200
+tap down
+tap x
+wait 400
+tap down
+tap x
+wait 300
+tap down
+tap x
+tap down
+tap x
+wait 400
+tap down
+tap x
+wait 600
+
+# SINTE: poner una nota y cambiarle el acorde (A + R1 tres veces = may); cada cambio audiciona
+tap a
+press a
+tap r1 3
+release a
+wait 600
+tap x
+wait 300
+
+# Ráfaga: 12 acordes seguidos (48 notas pedidas a una bolsa de 16)
+tap x 12
+wait 700
+shot h2-grilla.bmp
+
+# Proyecto: línea "motor" con CPU, voces y período
+press select
+tap up
+release select
+wait 600
+shot h2-proyecto.bmp
+quit

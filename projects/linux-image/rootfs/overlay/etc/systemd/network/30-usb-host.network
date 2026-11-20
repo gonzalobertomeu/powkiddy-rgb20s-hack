@@ -1,0 +1,8 @@
+# Red USB con la consola como host (USB_ROLE=host en /boot/rgb20s.conf):
+# tethering de Android (rndis_host / cdc_ncm) y adaptadores USB-Ethernet.
+[Match]
+Driver=rndis_host cdc_ether cdc_ncm r8152 asix ax88179_178a
+
+[Network]
+DHCP=yes
+MulticastDNS=yes

@@ -1,0 +1,211 @@
+# Demo del H1: arma un beat en la Grilla, edita largos en la Frase, recorre las pantallas
+# y compara las dos fuentes. Las capturas (BMP) quedan en la carpeta desde donde se corre.
+# Uso: GROOVEBOX_SCRIPT=projects/groovebox/scripts/demo-h1.txt just run
+
+wait 300
+shot h1-grilla-inicial.bmp
+
+# 1 BOMBO: pasos 1 5 9 13
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+
+# 2 CAJA: 5 y 13 (B + izquierda: al paso 1)
+tap down
+press b
+tap left
+release b
+tap right 4
+tap a
+tap right 8
+tap a
+
+# 3 HH-CER: pasos impares
+tap down
+press b
+tap left
+release b
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+tap right 2
+tap a
+
+# 4 HH-ABI: paso 15, en mute (Select + X)
+tap down
+press b
+tap right
+release b
+tap left
+tap a
+press select
+tap x
+release select
+
+# 5 PALMAS: 13
+tap down
+press b
+tap left
+release b
+tap right 12
+tap a
+
+# 6 SAMPLE: quitar su frase (A + B en la columna FRA)
+tap down
+press b
+tap left
+release b
+tap left
+press a
+tap b
+release a
+wait 300
+tap right
+
+# 7 BAJO: octava 3 (Select + L1), notas editadas con A + cruz
+tap down
+press select
+tap l1
+release select
+tap a
+tap right 3
+tap a
+press a
+tap right 3
+release a
+tap right 3
+tap a
+press a
+tap left 3
+release a
+tap right 4
+tap a
+tap right 4
+tap a
+press a
+tap up
+release a
+press select
+tap r1
+release select
+
+# 8 SINTE: C may, A men, F may, G may (A + L1/R1 recorre los acordes)
+tap down
+press b
+tap left
+release b
+tap a
+wait 300
+press a
+tap r1 3
+release a
+tap right 4
+tap a
+press a
+tap left 3
+tap r1
+release a
+tap right 4
+tap a
+press a
+tap left 4
+tap l1
+release a
+tap right 4
+tap a
+press a
+tap right 2
+release a
+
+# Frase del SINTE (Select + derecha dos veces): largo de 4 pasos en cada acorde.
+press select
+tap right 2
+release select
+press b
+tap up
+release b
+tap right 3
+press a
+tap right 3
+release a
+tap down 4
+press a
+tap right 3
+release a
+tap down 4
+press a
+tap right 3
+release a
+tap down 4
+press a
+tap right 3
+release a
+tap left 2
+wait 200
+shot h1-frase.bmp
+
+press select
+tap left 2
+release select
+wait 3000
+shot h1-grilla.bmp
+
+# Sección nueva (R2) y una nota: creación implícita de la frase.
+tap r2
+tap a
+wait 200
+shot h1-grilla-seccion-nueva.bmp
+tap l2
+wait 3000
+
+# Minimapa grande mientras se mantiene Select.
+press select
+wait 300
+shot h1-minimapa.bmp
+release select
+
+# Proyecto: prueba de controles y cambio de fuente.
+press select
+tap up
+release select
+press x
+press r2
+wait 200
+shot h1-proyecto.bmp
+release r2
+release x
+tap a
+wait 200
+shot h1-proyecto-12x24.bmp
+press select
+tap down
+release select
+wait 200
+shot h1-grilla-12x24.bmp
+press select
+tap right 2
+release select
+wait 200
+shot h1-frase-12x24.bmp
+
+# Salir: Select + Start mantenidos 1 s.
+press select
+press start
+wait 1300
+release start
+release select
+wait 500

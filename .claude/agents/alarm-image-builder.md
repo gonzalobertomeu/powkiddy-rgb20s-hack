@@ -21,7 +21,7 @@ Estado del kernel:
 
 ## Objetivo
 
-Una imagen **liviana** que arranque rápido. Idealmente funciona como "appliance": arranca directo en una aplicación a pantalla completa (por ejemplo el groovebox, hecho en Rust con SDL2 sobre KMS/DRM, sin X ni Wayland). Además tiene que dejar entrar por SSH vía Wi-Fi para desarrollar.
+Una imagen **liviana** que arranque rápido. Idealmente funciona como "appliance": arranca directo en una aplicación a pantalla completa (por ejemplo el groovebox, hecho en Rust con SDL2 sobre KMS/DRM, sin X ni Wayland). Además tiene que dejar entrar por SSH para desarrollar. La consola no tiene Wi-Fi utilizable (sin antena), así que la red es por USB: gadget ECM/NCM si hay UDC, o `cdc_ether`/`rndis_host`/`r8152` para adaptadores y tethering.
 
 Componentes:
 1. **Bootloader:** U-Boot para RK3326 (partir de `odroid-go2`). Ubicar las piezas en los offsets que usa Rockchip (idbloader, u-boot.itb). Verificá los offsets en la documentación de U-Boot o Rockchip antes de usarlos.

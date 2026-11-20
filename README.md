@@ -32,7 +32,7 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
 | Skill | Usada por |
 |---|---|
 | `adr` | todos (menos device-ops) |
-| `rust-mentor` | rust-dev, dsp-engineer |
+| `rust-mentor` | ninguno por ahora (el usuario no quiere modo aprendizaje) |
 | `rust-realtime-audio` | rust-dev, dsp-engineer |
 | `rust-aarch64-cross` | rust-dev, dev-infra |
 | `rockchip-rk3326-boot` | alarm-image-builder |
@@ -49,11 +49,32 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
 - [Hardware: especificaciones](docs/hardware/rgb20s.md)
 - [Hardware: emulación y pruebas sin la consola](docs/hardware/emulacion.md)
 - [Firmware: sistemas operativos](docs/firmware/sistemas-operativos.md)
+- [Firmware: Arch Linux ARM (arranque, kernel, rootfs, imagen, riesgos)](docs/firmware/arch-linux-arm.md)
 - [Soluciones: índice de ideas](docs/solutions/README.md)
-  - [Groovebox](docs/solutions/groovebox.md)
+  - [Groovebox: índice](docs/solutions/groovebox/README.md)
+    - [Referentes](docs/solutions/groovebox/referentes.md)
+    - [Spec de producto (features e hitos)](docs/solutions/groovebox/spec-producto.md)
+    - [Spec de interfaz (mockups y controles)](docs/solutions/groovebox/spec-ui.md)
+    - [Spec del motor (voces, secuenciador y CPU)](docs/solutions/groovebox/spec-motor.md)
+    - [Spec de formatos (proyecto, samples, MIDI)](docs/solutions/groovebox/spec-formatos.md)
+    - [DSP del motor (H2: voces, instrumentos, costos)](docs/solutions/groovebox/dsp.md)
 - Decisiones
   - [0001 — Rust como lenguaje](docs/decisions/0001-lenguaje-rust.md)
+  - [0002 — Interfaz híbrida grilla + tracker](docs/decisions/0002-interfaz-hibrida-grilla-tracker.md) (aceptada)
+  - [0003 — Patrones globales y pistas monofónicas](docs/decisions/0003-modelo-de-secuenciacion.md) (reemplazada por 0006 y 0007)
+  - [0004 — Proyectos en RON](docs/decisions/0004-formato-de-proyecto-ron.md) (aceptada)
+  - [0005 — Configuración de audio](docs/decisions/0005-configuracion-de-audio.md) (aceptada)
+  - [0006 — Canción de cadenas por pista](docs/decisions/0006-cadenas-por-pista.md) (aceptada)
+  - [0007 — Polifonía en el MVP](docs/decisions/0007-polifonia-en-el-mvp.md) (aceptada)
+  - [0008 — Compilación cruzada en contenedor x86_64 con libs arm64 de trixie](docs/decisions/0008-compilacion-cruzada-contenedor-x86-multiarch.md) (aceptada)
+  - [0009 — Arranque con U-Boot mainline y miniloader de rkbin, tarjeta MBR](docs/decisions/0009-arranque-uboot-miniloader-rkbin.md) (aceptada)
+  - [0010 — Kernel mainline 7.1.2 con DTS y drivers de ROCKNIX](docs/decisions/0010-kernel-mainline-con-dts-y-drivers-de-rocknix.md) (aceptada)
+  - [0011 — Rootfs de Arch Linux ARM con systemd, armada en contenedores](docs/decisions/0011-rootfs-alarm-con-systemd.md) (aceptada)
+  - [0012 — Acceso por USB gadget NCM + ACM con IP fija y DHCP](docs/decisions/0012-acceso-por-usb-gadget-ncm-acm.md) (aceptada)
+  - [0013 — Tantas ranuras de fundido como voces en la bolsa](docs/decisions/0013-ranuras-de-fundido.md) (aceptada)
+- [Entorno de desarrollo: justfile, compilación cruzada, simulador y deploy](infra/README.md)
 - [Proyectos](projects/README.md)
+  - [linux-image: imagen de Arch Linux ARM](projects/linux-image/README.md)
 
 ## Convenciones
 

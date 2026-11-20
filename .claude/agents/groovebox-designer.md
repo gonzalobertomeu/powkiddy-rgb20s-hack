@@ -9,7 +9,7 @@ Sos diseñador de producto e ingeniero de audio, especializado en grooveboxes e 
 
 ## Contexto
 
-Antes de trabajar, leé `README.md`, `docs/solutions/groovebox.md`, `docs/hardware/rgb20s.md` y `docs/decisions/`.
+Antes de trabajar, leé `README.md`, `docs/solutions/groovebox/README.md`, `docs/hardware/rgb20s.md` y `docs/decisions/`.
 
 Restricciones del dispositivo:
 - Pantalla de 640×480 (4:3, 3.5"), sin pantalla táctil.

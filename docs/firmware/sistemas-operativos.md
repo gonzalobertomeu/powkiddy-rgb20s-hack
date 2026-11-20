@@ -18,6 +18,7 @@ PortMaster (gestor de ports) funciona en dArkOS, ROCKNIX y AmberELEC.
 - La RGB20S **no tiene device tree en mainline**. Hay un `rk3326-powkiddy-rgb20s` dentro del árbol de ROCKNIX, que se aplica como parche aparte.
 - Mainline sí tiene placas hermanas muy parecidas (ver [hardware](../hardware/rgb20s.md#placas-hermanas-rk3326-en-linux-mainline)).
 - Camino posible: **Arch Linux ARM, Debian o Alpine** con kernel mainline más el device tree de ROCKNIX. Hay que armar el arranque a mano (U-Boot, kernel y device tree en la SD). **Todavía no se probó.**
+- Camino elegido: **Arch Linux ARM** (decisión del usuario, 2026-11-19). Investigación y build en [arch-linux-arm.md](arch-linux-arm.md).
 - Variante "appliance": un sistema mínimo que arranca directo en una sola aplicación (por ejemplo el groovebox).
 
 ## Procedimiento seguro
