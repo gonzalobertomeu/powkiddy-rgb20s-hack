@@ -14,9 +14,9 @@ BIN := env("BIN", APP)
 SCALE := env("RGB20S_SCALE", "2")
 # Punto de montaje de la partición de ROMs de la microSD (ej. /run/media/$USER/EASYROMS)
 SD_MOUNT := env("SD_MOUNT", "")
-# Deploy por red (a futuro): host SSH y carpeta remota (sin verificar la ruta)
+# Deploy por red: host SSH (entrada de ~/.ssh/config) y carpeta remota en la consola
 RGB20S_HOST := env("RGB20S_HOST", "rgb20s")
-RGB20S_DIR := env("RGB20S_DIR", "/roms/ports/" + APP)
+RGB20S_DIR := env("RGB20S_DIR", "/home/alarm/" + APP)
 
 root := justfile_directory()
 infra := root / "infra"
@@ -103,11 +103,11 @@ shell-cross:
 
 # --- Deploy -------------------------------------------------------------------
 
-# Copia el binario y assets a la microSD montada (vía principal: la consola no tiene red)
+# Copia el binario y assets a la microSD montada (sin red con la consola)
 deploy-sd: build-arm
     "{{infra}}/scripts/deploy-sd.sh" "{{SD_MOUNT}}" "{{APP}}" "{{arm_bin}}" "{{crate}}/assets" "{{crate}}"
 
-# Deploy por SSH/rsync al host RGB20S_HOST (a futuro: requiere red, ver infra/README.md)
+# Deploy por SSH al host RGB20S_HOST (rsync o, si la consola no lo tiene, scp)
 deploy: build-arm
     "{{infra}}/scripts/deploy-ssh.sh" "{{RGB20S_HOST}}" "{{RGB20S_DIR}}" "{{arm_bin}}" "{{crate}}/assets" "{{crate}}"
 

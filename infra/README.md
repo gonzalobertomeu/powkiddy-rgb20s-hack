@@ -40,8 +40,8 @@ Se pasan como `just VAR=valor receta` o por entorno.
 | `BIN` | igual a `APP` | nombre del binario |
 | `RGB20S_SCALE` | `2` | escala de la ventana del simulador |
 | `SD_MOUNT` | (vacío) | montaje de la partición con `ports/` de la microSD |
-| `RGB20S_HOST` | `rgb20s` | host SSH para `just deploy` (a futuro) |
-| `RGB20S_DIR` | `/roms/ports/<APP>` | carpeta remota para `just deploy` **(sin verificar)** |
+| `RGB20S_HOST` | `rgb20s` | host SSH para `just deploy` |
+| `RGB20S_DIR` | `/home/alarm/<APP>` | carpeta remota para `just deploy` |
 | `RUN_ARM_OUT` | `infra/build/run-arm/` | directorio de trabajo de la app en `just run-arm`: ahí caen los archivos que genere (capturas del guion) |
 
 ## Recetas
@@ -56,7 +56,7 @@ Se pasan como `just VAR=valor receta` o por entorno.
 | `just shell-cross` | Shell dentro del contenedor de build |
 | `just build-arm-emu` | Igual que `build-arm` pero en el contenedor arm64 emulado (lento, solo para comparar) |
 | `just deploy-sd` | Copia binario, licencias de terceros, assets y lanzador a la microSD montada (**vía principal**) |
-| `just deploy` | rsync por SSH (**a futuro**, requiere red) |
+| `just deploy` | Compila y copia por SSH (rsync o scp) a la consola con la imagen de Arch |
 | `just qemu-boot <kernel> <disco> [initramfs]` | Nivel 3: arranca un Linux aarch64 en `qemu-system-aarch64 -M virt -cpu cortex-a35` |
 | `just images` / `image-cross` / `image-arm64` | (Re)construye las imágenes Docker |
 
@@ -255,21 +255,28 @@ Lo que queda en la SD (convención de ports de ArkOS/dArkOS y PortMaster, **sin 
   que usa EmulationStation está en la **segunda** SD (`/roms2`), no en la de arranque **(sin verificar)**.
 - Después de copiar, puede hacer falta refrescar la lista de juegos en EmulationStation para que aparezca el port.
 
-### A futuro: deploy por red (`just deploy`)
+### Deploy por red (`just deploy`)
 
-`just deploy` hace `rsync` por SSH al host `RGB20S_HOST` (por defecto `rgb20s`, a definir en `~/.ssh/config`).
-Hoy no funciona porque la consola no tiene red con la Mac. Se sabe que el puerto USB-C funciona como **host**
-(la consola ya tuvo internet con el tethering USB de un Android, así que el kernel tiene un driver de red USB).
-Vías posibles, todas **(sin verificar)**:
+Con la imagen de Arch, la consola aparece en la Mac como placa de red USB (gadget NCM): la consola es
+`10.55.0.1` y la Mac recibe una IP de `10.55.0.0/24`. `just deploy` compila y copia por SSH al host
+`RGB20S_HOST` (por defecto `rgb20s`), en la carpeta `RGB20S_DIR` (por defecto `/home/alarm/<APP>`).
 
-1. **USB gadget ECM/NCM**: la consola aparece como placa de red USB conectada a la Mac. Requiere que el RK3326
-   tenga el UDC (controlador de dispositivo USB) habilitado en ese kernel y que el puerto soporte modo periférico.
-2. **Adaptador USB-Ethernet** en la consola (OTG en modo host) y cable a la red de la Mac.
-3. **Tethering USB de Android** en la consola y la Mac conectada al hotspot del mismo teléfono. Falta comprobar
-   si el teléfono deja que los dos clientes se vean entre sí.
+Entrada en `~/.ssh/config` (la clave `~/.ssh/powkiddy` es la que acepta la consola):
 
-Pendiente: lo investiga `device-ops` en el inventario. Cuando haya red, definir `rgb20s` en `~/.ssh/config`
-y confirmar la carpeta remota (`RGB20S_DIR`).
+```
+Host rgb20s
+    HostName 10.55.0.1
+    User alarm
+    IdentityFile ~/.ssh/powkiddy
+    IdentitiesOnly yes
+```
+
+La imagen de Arch no trae `rsync`: si falta, `deploy-ssh.sh` copia con `scp` (los assets se reemplazan
+enteros, equivalente al `--delete` de rsync). Para correr la app en la consola:
+
+```
+ssh rgb20s 'cd groovebox && SDL_VIDEODRIVER=kmsdrm GROOVEBOX_DEMO=1 ./groovebox'
+```
 
 ## Emulación del sistema completo (nivel 3)
 
@@ -310,7 +317,7 @@ infra/scripts/check-binary.sh revisa glibc y librerías de un binario
 infra/scripts/run-arm.sh      corre un binario aarch64 emulado
 infra/scripts/deploy-sd.sh    copia a la microSD montada
 infra/scripts/list-licenses.sh  licencias de terceros que declara un crate
-infra/scripts/deploy-ssh.sh   rsync por SSH (a futuro)
+infra/scripts/deploy-ssh.sh   deploy por SSH (rsync o scp)
 infra/scripts/qemu-boot.sh    nivel 3
 infra/launcher/port-launcher.sh.in  plantilla del lanzador de ports
 infra/sim/keymap.toml         mapeo de teclado del simulador
