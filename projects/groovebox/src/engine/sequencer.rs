@@ -8,7 +8,7 @@
 
 use crate::model::{
     CHAIN_LEN, ChainEntry, ChainId, Chord, MAX_CHAINS, MAX_PHRASES, MAX_SONG_ROWS, NOTE_MAX,
-    NOTE_MIN, NoteCell, PHRASE_STEPS, PhraseId, Step, TRACKS,
+    NOTE_MIN, NoteCell, PHRASE_STEPS, PhraseId, SWING_MAX, SWING_MIN, Step, TRACKS,
 };
 
 /// Qué suena. Los modos de una pista guardan la posición `(fila, entrada)` y no el número de
@@ -148,19 +148,92 @@ impl Default for SongData {
     }
 }
 
-/// Reloj de pasos. El paso `n` desde `origin` cae en `origin + n · samples_per_step`: la
-/// posición se calcula, no se acumula, así no hay deriva por redondeo en sesiones largas.
+/// Reloj de pasos. El paso `n` desde `origin` cae en `origin + n · samples_per_step` (la grilla
+/// recta) más el atraso del swing si es el segundo de su par: la posición se calcula, no se
+/// acumula, así no hay deriva por redondeo en sesiones largas.
 #[derive(Clone, Copy, Debug)]
 struct Clock {
     samples_per_step: f64,
     origin: f64,
+    /// Pasos desde `origin` (vuelve a 0 con cada cambio de tempo).
     count: u64,
+    /// Pasos desde Play: decide la paridad del swing (no cambia con el tempo).
+    step: u64,
 }
 
 impl Clock {
-    fn next(&self) -> f64 {
+    fn new(samples_per_step: f64) -> Self {
+        Self {
+            samples_per_step,
+            origin: 0.0,
+            count: 0,
+            step: 0,
+        }
+    }
+
+    fn start(&mut self, frame: u64) {
+        self.origin = frame as f64;
+        self.count = 0;
+        self.step = 0;
+    }
+
+    /// Dónde cae el próximo paso sin swing.
+    fn grid(&self) -> f64 {
         self.origin + self.count as f64 * self.samples_per_step
     }
+
+    /// Dónde cae el próximo paso, en muestras (con decimales).
+    fn next(&self, swing: u8) -> f64 {
+        let delay = if self.step % 2 == 1 {
+            swing_fraction(swing) * self.samples_per_step
+        } else {
+            0.0
+        };
+        self.grid() + delay
+    }
+
+    fn tick(&mut self) {
+        self.count += 1;
+        self.step += 1;
+    }
+
+    /// Nuevo tempo con la misma fase respecto de la grilla. Si la grilla ya pasó y el paso
+    /// espera su swing, la fracción ya esperada también se conserva.
+    fn retime(&mut self, samples_per_step: f64, frame: u64) {
+        let now = frame as f64;
+        let remaining = ((self.grid() - now) / self.samples_per_step).clamp(-1.0, 1.0);
+        self.origin = now + remaining * samples_per_step;
+        self.count = 0;
+        self.samples_per_step = samples_per_step;
+    }
+}
+
+/// Atraso de los pasos pares de cada par, en pasos (spec-motor, "Swing"): 0 a 0,5.
+pub fn swing_fraction(swing: u8) -> f64 {
+    f64::from(swing.clamp(SWING_MIN, SWING_MAX) - SWING_MIN) / 50.0
+}
+
+/// Vista previa de una frase (X en la Canción y la Cadena): sus 16 pasos una vez, en una pista,
+/// con su propio reloj (suena aunque el secuenciador esté parado). Comparte tempo y swing.
+#[derive(Clone, Copy, Debug)]
+struct Preview {
+    track: u8,
+    phrase: PhraseId,
+    transpose: i8,
+    clock: Clock,
+}
+
+/// Lo que pasa en la muestra de la vista previa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewEvent {
+    Step {
+        track: u8,
+        trigger: Option<Trigger>,
+    },
+    /// Terminó la frase: se sueltan las notas INF de la pista.
+    End {
+        track: u8,
+    },
 }
 
 pub struct Sequencer {
@@ -168,10 +241,27 @@ pub struct Sequencer {
     mode: Option<PlayMode>,
     heads: [HeadPos; TRACKS],
     clock: Clock,
+    swing: u8,
     /// Ya se disparó el primer paso desde Play (antes de eso no se avanza).
     started: bool,
     audible: [bool; TRACKS],
     playhead_dirty: bool,
+    preview: Option<Preview>,
+}
+
+/// Qué dispara un paso, con la transposición de su entrada de cadena.
+fn trigger_of(step: &Step, transpose: i8) -> Option<Trigger> {
+    match step.note {
+        NoteCell::Empty => None,
+        NoteCell::Off => Some(Trigger::Off),
+        NoteCell::On(n) => Some(Trigger::Notes {
+            root: (i16::from(n) + i16::from(transpose))
+                .clamp(i16::from(NOTE_MIN), i16::from(NOTE_MAX)) as u8,
+            chord: step.chord,
+            velocity: step.velocity,
+            gate_ticks: step.gate_ticks,
+        }),
+    }
 }
 
 pub fn samples_per_step(sample_rate: f32, bpm: f32) -> f64 {
@@ -184,14 +274,12 @@ impl Sequencer {
             data: SongData::new(),
             mode: None,
             heads: [HeadPos::default(); TRACKS],
-            clock: Clock {
-                samples_per_step,
-                origin: 0.0,
-                count: 0,
-            },
+            clock: Clock::new(samples_per_step),
+            swing: SWING_MIN,
             started: false,
             audible: [true; TRACKS],
             playhead_dirty: false,
+            preview: None,
         }
     }
 
@@ -219,8 +307,7 @@ impl Sequencer {
             };
         }
         self.mode = Some(mode);
-        self.clock.origin = frame as f64;
-        self.clock.count = 0;
+        self.clock.start(frame);
         self.started = false;
         self.playhead_dirty = true;
     }
@@ -236,15 +323,62 @@ impl Sequencer {
     /// Cambia el tempo conservando la fase del paso en curso: el paso siguiente llega cuando le
     /// falta la misma fracción de paso que antes, al tempo nuevo.
     pub fn set_samples_per_step(&mut self, samples_per_step: f64, frame: u64) {
-        let old = self.clock.samples_per_step;
         if self.is_playing() && self.started {
-            let now = frame as f64;
-            let next = self.clock.next();
-            let remaining = ((next - now) / old).clamp(0.0, 1.0);
-            self.clock.origin = now + remaining * samples_per_step;
-            self.clock.count = 0;
+            self.clock.retime(samples_per_step, frame);
+        } else {
+            self.clock.samples_per_step = samples_per_step;
         }
-        self.clock.samples_per_step = samples_per_step;
+        if let Some(p) = &mut self.preview {
+            if p.clock.step > 0 {
+                p.clock.retime(samples_per_step, frame);
+            } else {
+                p.clock.samples_per_step = samples_per_step;
+            }
+        }
+    }
+
+    /// Empieza (o reemplaza) la vista previa: el primer paso suena en `frame`.
+    pub fn start_preview(&mut self, track: u8, phrase: PhraseId, transpose: i8, frame: u64) {
+        let mut clock = Clock::new(self.clock.samples_per_step);
+        clock.start(frame);
+        self.preview = Some(Preview {
+            track,
+            phrase,
+            transpose,
+            clock,
+        });
+    }
+
+    /// Corta la vista previa; devuelve su pista.
+    pub fn cancel_preview(&mut self) -> Option<u8> {
+        self.preview.take().map(|p| p.track)
+    }
+
+    /// Muestra del próximo evento de la vista previa, si hay una.
+    pub fn next_preview_frame(&self) -> Option<u64> {
+        self.preview
+            .map(|p| p.clock.next(self.swing).round().max(0.0) as u64)
+    }
+
+    /// El paso de la vista previa que toca (o su final, después del paso 16).
+    pub fn fire_preview(&mut self) -> Option<PreviewEvent> {
+        let p = self.preview.as_mut()?;
+        let track = p.track;
+        let i = p.clock.step as usize;
+        if i >= PHRASE_STEPS {
+            self.preview = None;
+            return Some(PreviewEvent::End { track });
+        }
+        p.clock.tick();
+        let step = self.data.step(p.phrase, i);
+        let trigger = trigger_of(step, p.transpose);
+        Some(PreviewEvent::Step { track, trigger })
+    }
+
+    /// Swing en % (50 = recto, 75 = medio paso). Se aplica desde el próximo paso: si el paso
+    /// que espera ya pasó su momento con el swing nuevo, suena en la muestra siguiente.
+    pub fn set_swing(&mut self, swing: u8) {
+        self.swing = swing.clamp(SWING_MIN, SWING_MAX);
     }
 
     pub fn set_audible(&mut self, audible: [bool; TRACKS]) {
@@ -254,7 +388,7 @@ impl Sequencer {
     /// Muestra (absoluta) del próximo paso, si está sonando.
     pub fn next_step_frame(&self) -> Option<u64> {
         self.is_playing()
-            .then(|| self.clock.next().round().max(0.0) as u64)
+            .then(|| self.clock.next(self.swing).round().max(0.0) as u64)
     }
 
     /// Avanza los cabezales al paso que toca y devuelve qué disparar en cada pista.
@@ -269,7 +403,7 @@ impl Sequencer {
             }
         }
         self.started = true;
-        self.clock.count += 1;
+        self.clock.tick();
         self.playhead_dirty = true;
 
         for (t, slot) in out.iter_mut().enumerate() {
@@ -284,18 +418,7 @@ impl Sequencer {
                 continue;
             };
             let step = self.data.step(entry.phrase, usize::from(h.step));
-            *slot = match step.note {
-                NoteCell::Empty => None,
-                NoteCell::Off => Some(Trigger::Off),
-                NoteCell::On(n) => Some(Trigger::Notes {
-                    root: (i16::from(n) + i16::from(entry.transpose))
-                        .clamp(i16::from(NOTE_MIN), i16::from(NOTE_MAX))
-                        as u8,
-                    chord: step.chord,
-                    velocity: step.velocity,
-                    gate_ticks: step.gate_ticks,
-                }),
-            };
+            *slot = trigger_of(step, entry.transpose);
         }
         out
     }

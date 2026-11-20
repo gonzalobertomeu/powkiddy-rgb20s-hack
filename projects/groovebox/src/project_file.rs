@@ -16,9 +16,9 @@ use crate::instrument::{
     DrumModel, DrumParams, Instrument, MAX_VOICES, Patch, SynthParams, Wave, default_kit,
 };
 use crate::model::{
-    CHAIN_LEN, Chain, ChainEntry, ChannelStrip, Chord, ChordKind, DEFAULT_GATE, DEFAULT_VELOCITY,
-    MAX_SONG_ROWS, NOTE_MAX, NOTE_MIN, NoteCell, Phrase, Project, Step, TEMPO_MAX, TEMPO_MIN,
-    TRACKS, TRANSPOSE_MAX, Track, gate_nudge,
+    CHAIN_LEN, Chain, ChainEntry, ChannelStrip, Chord, ChordKind, DEFAULT_GATE, DEFAULT_TEMPO,
+    DEFAULT_VELOCITY, MAX_SONG_ROWS, NOTE_MAX, NOTE_MIN, NoteCell, Phrase, Project, SWING_MAX,
+    SWING_MIN, Step, TEMPO_MAX, TEMPO_MIN, TRACKS, TRANSPOSE_MAX, Track, gate_nudge,
 };
 
 /// Versión del formato que escribe y entiende esta app.
@@ -51,7 +51,7 @@ pub struct ProjectFile {
 }
 
 fn default_tempo() -> f32 {
-    120.0
+    DEFAULT_TEMPO
 }
 
 fn default_swing() -> u8 {
@@ -527,7 +527,10 @@ impl ProjectFile {
         if project.tempo_bpm != self.tempo_bpm {
             r.out_of_range += 1;
         }
-        project.swing = self.swing;
+        project.swing = self.swing.clamp(SWING_MIN, SWING_MAX);
+        if project.swing != self.swing {
+            r.out_of_range += 1;
+        }
 
         let kit = default_kit();
         r.missing_tracks = TRACKS.saturating_sub(self.tracks.len());
@@ -718,7 +721,21 @@ mod tests {
             s.cutoff = 3;
         }
         p.tempo_bpm = 97.5;
+        p.swing = 62;
         assert_eq!(round_trip(&p), p);
+    }
+
+    #[test]
+    fn swing_out_of_range_is_clamped() {
+        for (swing, expected) in [(90, 75), (10, 50)] {
+            let text = format!("(format_version: 1, swing: {swing})");
+            let c = parse(&text).unwrap().file.into_project("x");
+            assert_eq!(c.project.swing, expected);
+            assert!(
+                c.warnings
+                    .contains(&"1 valores fuera de rango (ajustados)".to_string())
+            );
+        }
     }
 
     #[test]

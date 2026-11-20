@@ -405,7 +405,8 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
         Screen::Song => screens::song(&mut p, app, view)?,
         Screen::Chain => screens::chain(&mut p, app, view)?,
         Screen::Project => screens::project(&mut p, app, view)?,
-        Screen::Instrument | Screen::Mix => screens::pending(&mut p, app, view)?,
+        Screen::Instrument => screens::instrument(&mut p, app, view)?,
+        Screen::Mix => screens::pending(&mut p, app, view)?,
     }
     if app.modal.is_some() {
         files::confirm(&mut p, app)?;

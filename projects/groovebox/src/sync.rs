@@ -19,6 +19,7 @@ use crate::model::{
 
 pub struct EngineMirror {
     tempo: Option<f32>,
+    swing: Option<u8>,
     instruments: [Option<Instrument>; TRACKS],
     mix: [(bool, bool); TRACKS],
     phrases: Box<[[Step; PHRASE_STEPS]]>,
@@ -38,6 +39,7 @@ impl EngineMirror {
     pub fn new() -> Self {
         Self {
             tempo: None,
+            swing: None,
             instruments: [None; TRACKS],
             mix: [(false, false); TRACKS],
             phrases: vec![[Step::default(); PHRASE_STEPS]; MAX_PHRASES].into_boxed_slice(),
@@ -132,6 +134,12 @@ impl EngineMirror {
             }
             self.tempo = Some(project.tempo_bpm);
         }
+        if self.swing != Some(project.swing) {
+            if !send(Command::SetSwing(project.swing)) {
+                return false;
+            }
+            self.swing = Some(project.swing);
+        }
         for (t, (sent, track)) in self.instruments.iter_mut().zip(&project.tracks).enumerate() {
             if *sent != Some(track.instrument) {
                 let instrument = track.instrument;
@@ -160,6 +168,13 @@ impl EngineMirror {
 }
 
 pub fn audition_command(a: Audition) -> Command {
+    if let Some(p) = a.phrase {
+        return Command::PreviewPhrase {
+            track: a.track as u8,
+            phrase: p.phrase,
+            transpose: p.transpose,
+        };
+    }
     let mut notes = [0u8; MAX_NOTES];
     let slice = a.notes.as_slice();
     notes[..slice.len()].copy_from_slice(slice);
@@ -235,6 +250,27 @@ mod tests {
             .unwrap();
         apply(&mut engine, &mut mirror, &project);
         assert_same(&engine, &project);
+    }
+
+    #[test]
+    fn tempo_and_swing_are_sent_once_per_change() {
+        let mut project = Project::new_default();
+        let mut mirror = EngineMirror::new();
+        let mut sent = Vec::new();
+        let mut collect = |p: &Project, sent: &mut Vec<Command>| {
+            sent.clear();
+            assert!(mirror.sync(p, None, &mut |cmd| {
+                sent.push(cmd);
+                true
+            }));
+        };
+        collect(&project, &mut sent);
+        assert!(sent.contains(&Command::SetSwing(50)));
+        project.swing = 66;
+        collect(&project, &mut sent);
+        assert_eq!(sent, [Command::SetSwing(66)]);
+        collect(&project, &mut sent);
+        assert!(sent.is_empty());
     }
 
     #[test]

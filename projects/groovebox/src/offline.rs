@@ -1,9 +1,9 @@
 //! Uso del motor sin audio ni ventana: render de demos a WAV y benchmark.
 //!
 //! - `groovebox render [carpeta]`: escribe `h5-cancion.wav` (la canción del proyecto de
-//!   demostración en modo canción) y `h3-beat.wav` (sus secciones de la fila 0 en loop), los dos
-//!   tocados por el secuenciador real en bloques de 256 frames como el callback, `h2-kit.wav` y
-//!   `h2-robo.wav`.
+//!   demostración en modo canción), `h4-swing-voces.wav` (swing y notas largas superpuestas) y
+//!   `h3-beat.wav` (las secciones de la fila 0 de la demo en loop), tocados por el secuenciador
+//!   real en bloques de 256 frames como el callback, `h2-kit.wav` y `h2-robo.wav`.
 //! - `groovebox bench [segundos]`: renderiza en bloques de 256 frames y mide cada bloque contra
 //!   su presupuesto (256 / 48 kHz = 5,33 ms). Con `just run-arm bench` corre emulado: sirve para
 //!   comparar, no como dato de la consola.
@@ -246,6 +246,71 @@ fn play_song(project: &Project, block: usize) -> Vec<f32> {
     out
 }
 
+/// Demo del H4: una frase de batería con hi-hats en semicorcheas (para oír el swing), bajo y un
+/// arpegio del SINTE con notas de 8 pasos cada 2 (se superponen de a 4) a 100 BPM.
+fn h4_project() -> Project {
+    let mut p = Project::new_default();
+    p.name = "h4".to_string();
+    p.tempo_bpm = 100.0;
+    let sec = Section::default();
+    let note = |n: u8, velocity: u8, gate_steps: u16| Step {
+        note: NoteCell::On(n),
+        velocity,
+        gate_ticks: gate_steps * TICKS_PER_STEP,
+        ..Step::default()
+    };
+    let mut put = |track: usize, i: usize, step: Step| {
+        *p.step_mut(track, sec, i)
+            .expect("el proyecto nuevo tiene frase en cada pista") = step;
+    };
+    for i in [0, 6, 8, 10] {
+        put(0, i, note(60, if i == 0 || i == 8 { 120 } else { 80 }, 1));
+    }
+    for i in [4, 12] {
+        put(1, i, note(60, 105, 1));
+    }
+    for i in 0..PHRASE_STEPS {
+        put(2, i, note(60, if i % 2 == 0 { 100 } else { 70 }, 1));
+    }
+    for (i, n) in [(0, 33), (3, 33), (6, 45), (8, 31), (11, 31), (14, 43)] {
+        put(6, i, note(n, 110, 2));
+    }
+    // Am9 arriba y abajo: cada nota dura 8 pasos y entra otra cada 2.
+    for (k, n) in [57, 60, 64, 67, 71, 67, 64, 60].into_iter().enumerate() {
+        put(7, 2 * k, note(n, 90, 8));
+    }
+    p
+}
+
+/// Tres partes de 2 vueltas sobre la frase de `h4_project`, cambiando el proyecto como la
+/// interfaz (por `EngineMirror`) sin parar: recto con el SINTE en 4 voces, swing 66 % y swing
+/// 66 % con el SINTE en 1 voz (las notas ya no se superponen).
+fn play_h4(block: usize) -> Vec<f32> {
+    let mut project = h4_project();
+    let mut engine = Engine::new(SR as f32);
+    let mut mirror = EngineMirror::new();
+    let mut out = Vec::new();
+    let mut buf = vec![0.0f32; block * 2];
+    let parts: [(u8, u8); 3] = [(50, 4), (66, 4), (66, 1)];
+    let mut transport = Some(PlayMode::Section { row: 0, entry: 0 });
+    for (swing, voices) in parts {
+        project.swing = swing;
+        project.tracks[7].instrument.voices = voices;
+        mirror.sync(&project, transport, &mut |cmd| {
+            engine.handle(cmd);
+            true
+        });
+        render_frames(&mut engine, &mut out, &mut buf, loop_frames(&project, 2));
+    }
+    transport = None;
+    mirror.sync(&project, transport, &mut |cmd| {
+        engine.handle(cmd);
+        true
+    });
+    render_frames(&mut engine, &mut out, &mut buf, SR as usize * 2);
+    out
+}
+
 /// Frases que dura una pasada de la pista más larga por el bloque de la fila 0.
 fn song_phrases(project: &Project) -> usize {
     (0..TRACKS)
@@ -302,6 +367,14 @@ pub fn render(dir: Option<&str>) -> Result<(), Box<dyn Error>> {
         song_phrases(&demo),
         demo.tempo_bpm,
         lens.join("; ")
+    );
+
+    let out = play_h4(BENCH_FRAMES);
+    write_wav(&dir.join("h4-swing-voces.wav"), &out)?;
+    println!(
+        "render: h4-swing-voces = 3 partes de 2 vueltas a {} BPM: recto (SINTE 4 voces), swing 66 % \
+         y swing 66 % con el SINTE en 1 voz",
+        h4_project().tempo_bpm
     );
 
     let out = play_sections(&demo, 2, BENCH_FRAMES);
@@ -499,6 +572,17 @@ mod tests {
             let c = play_sections(&demo, 1, block);
             assert_eq!(a, c, "el mismo audio con buffers de {block} frames");
         }
+        let peak = a.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+        assert!(peak > 0.1 && peak <= 1.0, "pico {peak}");
+    }
+
+    #[test]
+    fn h4_render_is_deterministic_and_independent_of_the_buffer_size() {
+        let a = play_h4(256);
+        assert_eq!(a, play_h4(256), "determinismo");
+        assert_eq!(a, play_h4(64), "el mismo audio con buffers de 64 frames");
+        let part = loop_frames(&h4_project(), 2);
+        assert_eq!(a.len(), (3 * part + SR as usize * 2) * 2);
         let peak = a.iter().fold(0.0f32, |m, x| m.max(x.abs()));
         assert!(peak > 0.1 && peak <= 1.0, "pico {peak}");
     }

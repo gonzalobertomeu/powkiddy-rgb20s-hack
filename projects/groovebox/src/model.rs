@@ -21,6 +21,10 @@ pub const TICKS_PER_STEP: u16 = 24;
 pub const TRANSPOSE_MAX: i8 = 48;
 pub const TEMPO_MIN: f32 = 40.0;
 pub const TEMPO_MAX: f32 = 300.0;
+pub const DEFAULT_TEMPO: f32 = 120.0;
+/// Swing en %: 50 = recto, ~67 = tresillo, 75 = medio paso (spec-motor, "Swing").
+pub const SWING_MIN: u8 = 50;
+pub const SWING_MAX: u8 = 75;
 
 pub const NOTE_MIN: u8 = 12; // C-0
 pub const NOTE_MAX: u8 = 127; // G-9
@@ -412,7 +416,7 @@ impl Project {
         });
         let mut project = Self {
             name: "nuevo".to_string(),
-            tempo_bpm: 120.0,
+            tempo_bpm: DEFAULT_TEMPO,
             swing: 50,
             tracks,
             song: Song::default(),

@@ -171,6 +171,19 @@ impl Instrument {
     }
 }
 
+/// Voces por defecto del instrumento de `track` (spec-motor, "Voces y polifonía"): las del kit si
+/// la pista sigue con el mismo tipo; si no, las del tipo (percusión 1, sampler 2, sustractivo 4).
+pub fn default_voices(track: usize, kind: TrackKind) -> u8 {
+    match default_kit().get(track) {
+        Some((_, kit)) if kit.kind() == kind => kit.voices,
+        _ => match kind {
+            TrackKind::Drum => 1,
+            TrackKind::Sample => 2,
+            TrackKind::Synth => 4,
+        },
+    }
+}
+
 /// Kit del proyecto nuevo (spec-motor, "Modelo de datos").
 pub fn default_kit() -> [(&'static str, Instrument); 8] {
     let drum = |m| Instrument::new(Patch::Drum(DrumParams::new(m)), 1);

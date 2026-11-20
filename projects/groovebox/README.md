@@ -2,8 +2,9 @@
 
 Groovebox para la Powkiddy RGB20S. Diseño y hitos en [docs/solutions/groovebox](../../docs/solutions/groovebox/README.md).
 
-Estado: **H6** (guardar y abrir proyectos en RON: con esto se cumple el objetivo mínimo del MVP, "un beat de 4
-compases guardado") sobre **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
+Estado: **H4** (swing, voces por pista editables y notas largas superpuestas, tempo y swing en Proyecto, X en Canción
+y Cadena toca la frase entera una vez) completado después de **H6** (guardar y abrir proyectos en RON: con esto se
+cumple el objetivo mínimo del MVP, "un beat de 4 compases guardado") sobre **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
 frase, Start contextual, pantallas Canción y Cadena editables, seguir reproducción) sobre **H3** (secuenciador, edición
 en vivo, cabezales), **H2** (motor de sonido: bolsa de voces, percusión sintetizada, sinte, medición de CPU) y **H1**
 (input, fuente bitmap, Grilla y Frase editables). Probado en la Mac (nativo y sin escritorio) y emulado (aarch64); **sin probar en la consola**. Diseño del
@@ -38,6 +39,13 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
 - **Navegación con contexto**: Canción → Grilla abre la sección `(fila del cursor, 0)` en la pista del cursor;
   Grilla → Cadena abre la cadena de esa pista y fila con el cursor en la sección; Cadena → Frase abre la frase de la
   posición del cursor. La pista y la fila se comparten entre todas las pantallas.
+- **Swing (H4)**: global, 50–75 % (Proyecto). El segundo paso de cada par se atrasa `paso · (s − 50) / 50` en su
+  muestra exacta, sin deriva (la posición se calcula desde la grilla recta). Se guarda en el proyecto y se aplica desde
+  el paso siguiente; un cambio de tempo conserva la fase aunque el paso esté esperando su swing.
+- **Voces superpuestas (H4)**: en una pista poli (voces 2–8) cada nota suena su largo y su relajación, y las siguientes
+  se superponen hasta el límite de la pista; con el límite lleno, la nota nueva roba la más vieja de la pista (con
+  fundido de 5 ms, ADR 0007). Con 1 voz, el sinte hace legato y la percusión corta el golpe anterior. Las voces se
+  editan en **Instrumento** (por ahora es el único parámetro de esa pantalla) y se guardan en el proyecto (`voices`).
 - **Secuenciador (H3)**: Select + Start reproduce en loop la **sección** que se ve en la Grilla: cada pista
   repite la frase que tiene en esa fila y entrada de cadena (percusión, bajo y sinte con acordes, con su velocidad, su
   largo y la transposición de la entrada). Vive en el hilo de audio con reloj en muestras: cada paso
@@ -59,15 +67,17 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
   columnas de v1 se ven deshabilitadas con la fuente chica y no aparecen con la grande).
 - **Creación implícita**: poner una nota donde la pista no tiene frase crea la fila de la canción, la cadena y/o
   la frase que falten (solo en la primera entrada libre de la cadena; si hay un hueco, avisa).
-- **Instrumento** y **Mezcla**: pendientes.
-- **Proyecto (H6)**: nombre (renombrar), **GUARDAR**, **GUARDAR COMO...**, **CARGAR...** y **NUEVO**; los ajustes
+- **Instrumento (H4, parcial)**: tipo de la pista y **voces** (A + cruz ±1, A + B por defecto). El resto llega en H8.
+- **Mezcla**: pendiente.
+- **Proyecto (H6 y H4)**: nombre (renombrar), **tempo** y **swing** editables, **GUARDAR**, **GUARDAR COMO...**, **CARGAR...** y **NUEVO**; los ajustes
   (fuente 8×16 / 12×24, audición al editar, seguir reproducción), SALIR, la carpeta de datos y, si entran (con la
   fuente chica), una **prueba de controles** (botones apretados y posición de los sticks) y una muestra de texto en
   los dos tamaños. Detalle abajo, en "Proyectos y carpeta de datos".
 - **Cambios sin guardar**: `*` junto al nombre en el título de todas las pantallas y `* sin guardar` en Proyecto.
   NUEVO, CARGAR y salir (SALIR o Select + Start mantenido) preguntan antes de descartarlos.
 - **Audición**: X hace sonar el paso (o el instrumento con la última nota) con el instrumento real de la pista; poner y
-  editar notas también suena. Los acordes disparan varias voces; el largo (LARGO) se respeta al tempo actual (INF = 16 pasos).
+  editar notas también suena. En la Canción y la Cadena, X toca la **frase entera una vez** (vista previa del motor, con
+  reloj propio: suena aunque el secuenciador esté parado; Start la corta). Los acordes disparan varias voces; el largo (LARGO) se respeta al tempo actual (INF = 16 pasos).
 - **Motor (H2)**: bolsa de 16 voces + 4 de fundido con las reglas de robo del ADR 0007; kit por defecto: BOMBO, CAJA,
   HH-CER, HH-ABI y PALMAS sintetizados, SAMPLE en silencio (llega en H7), BAJO (sierra + filtro, mono con legato) y
   SINTE (sierra + filtro, 4 voces). Soft clip en el master, volúmenes suavizados, flush-to-zero en el hilo de audio.
@@ -95,11 +105,14 @@ En la Frase, sobre ACORDE: A + ←/→ cambia el tipo y A + ↑/↓ la inversió
 1/4, 1/2, 3/4, 1…16 e INF. A + B en ACORDE, VEL o LARGO vuelve al valor por defecto; en NOTA borra el paso.
 Mientras se mantiene Select, el minimapa se agranda.
 
-### Proyecto y modales (H6)
+### Proyecto, Instrumento y modales (H6 y H4)
 
 | Dónde | Controles |
 |---|---|
 | Proyecto | ↑/↓ elegir; **A** ejecuta (GUARDAR, GUARDAR COMO..., CARGAR..., NUEVO, SALIR; sobre "nombre", renombrar) o cambia un ajuste (A + cruz también); B o Select + ↓ vuelven |
+| Proyecto: tempo | **A + ←/→** ±0,1 BPM; **A + ↑/↓** ±1 BPM (×4 tras 1 s); **A + B** 120 BPM |
+| Proyecto: swing | **A + ←/→** ±1 %; **A + ↑/↓** ±5 %; **A + B** recto (50 %) |
+| Instrumento | **A + cruz** voces ±1 (1–8); **A + B** voces por defecto; X escuchar; L1/R1 pista; Start loop de la frase |
 | Editor de nombres | ←/→ mover (también con A apretado); **A + ↑/↓** cambiar la letra (también ↑/↓ solos); en el hueco del final, agregar; B + ←/→ principio o final; **A + B** borrar; **Start** aceptar; B cancelar |
 | Cargar proyecto | ↑/↓ mover; B + ↑/↓ de a 10; **A** (o →) abrir; B cancelar |
 | Diálogo de cambios sin guardar | **Start** guardar y seguir; **A** seguir sin guardar; **B** cancelar |
@@ -221,7 +234,7 @@ just bench        # costo del motor, nativo en release (ver abajo)
 Subcomandos sin ventana ni audio (sirven también con `just run-arm`):
 
 ```sh
-groovebox render [carpeta]   # h5-cancion.wav, h3-beat.wav, h2-kit.wav y h2-robo.wav (48 kHz, 16 bits, estéreo)
+groovebox render [carpeta]   # h5-cancion.wav, h4-swing-voces.wav, h3-beat.wav, h2-kit.wav y h2-robo.wav (48 kHz, 16 bits, estéreo)
 groovebox bench [segundos]   # bolsa llena, demo en loop de secciones y en modo canción, secuenciador solo, motor vacío y percusión
 just run-arm bench 5         # lo mismo emulado: solo para comparar, no es el número de la consola
 ```
@@ -263,6 +276,10 @@ Canción parada y con el aviso de la fila 2, Start en la Canción, una cadena nu
 Grilla siguiendo la reproducción (fila 1 y la desalineación de la fila 2), la Cadena del SINTE con su cabezal, la
 transposición editada y el loop de la cadena, y la opción en Proyecto (10 capturas).
 
+[`scripts/demo-h4.txt`](scripts/demo-h4.txt) usa el proyecto demo (`GROOVEBOX_DEMO=1`, `GROOVEBOX_AUDIO=null` y una
+`GROOVEBOX_DATA` de prueba): swing a 66 % y tempo a 110 en Proyecto, voces del SINTE a 2 en Instrumento y la Grilla
+con el loop de la sección sonando con swing (4 capturas).
+
 [`scripts/demo-h6.txt`](scripts/demo-h6.txt) arranca con una carpeta de datos vacía: arma un bombo, Proyecto con
 `* sin guardar`, GUARDAR, GUARDAR COMO con el editor de nombres (escribe `beat_01`), Proyecto con la fuente grande,
 NUEVO con el diálogo de cambios sin guardar, CARGAR con la lista, la Grilla del proyecto abierto y el diálogo de
@@ -288,8 +305,12 @@ y esas pistas vuelven a la fila 0 antes que el resto. SAMPLE no tiene cadenas.
 - `h5-cancion.wav`: la canción en modo canción desde la fila 0, 10 frases (lo que tarda la pista más larga en recorrer
   el bloque; las palmas y los hi-hats ya volvieron a la fila 0) y Stop.
 - `h3-beat.wav`: las 4 secciones de la fila 0, cada una en loop 2 vueltas (Select + Start en cada una) y Stop.
+- `h4-swing-voces.wav` (no usa la demo): una frase a 100 BPM con hi-hats en semicorcheas, bombo, caja, bajo y un
+  arpegio de Am9 en el SINTE con notas de 8 pasos cada 2 (se superponen de a 4). Tres partes de 2 vueltas sin parar,
+  cambiando el proyecto como la interfaz (por `EngineMirror`): recto con 4 voces, **swing 66 %** con 4 voces y swing
+  66 % con el SINTE en **1 voz** (legato: las notas ya no se superponen). 16,4 s.
 
-Los dos salen idénticos byte a byte con el binario nativo y con el aarch64 emulado (`just run-arm render`).
+Todos salen idénticos byte a byte con el binario nativo y con el aarch64 emulado (`just run-arm render`).
 
 ## Estructura
 
@@ -309,8 +330,8 @@ Los dos salen idénticos byte a byte con el binario nativo y con el aarch64 emul
 | `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó |
 | `src/demo.rs` | Proyecto de demostración (render, bench y `GROOVEBOX_DEMO=1`) |
 | `src/engine/mod.rs` | `Engine`: comandos, eventos, render con disparos en la muestra exacta, `note_on`, mezcla por pista, master con soft clip. Sin cpal |
-| `src/engine/sequencer.rs` | Secuenciador: copia de frases, cadenas y canción (`SongData`), regla de bloques (`next_position`), reloj, cabezales por pista, modos de reproducción |
-| `src/engine/seq_tests.rs` | Tests del secuenciador (tiempos exactos, deriva, tempo, gate, INF, edición en vivo, mute/solo, cabezales, cadenas, canción, bloques, desalineación, modos) |
+| `src/engine/sequencer.rs` | Secuenciador: copia de frases, cadenas y canción (`SongData`), regla de bloques (`next_position`), reloj con swing, cabezales por pista, modos de reproducción, vista previa de una frase |
+| `src/engine/seq_tests.rs` | Tests del secuenciador (tiempos exactos, deriva, tempo, gate, INF, edición en vivo, mute/solo, cabezales, cadenas, canción, bloques, desalineación, modos, swing, voces superpuestas, vista previa) |
 | `src/engine/pool.rs` | Bolsa de voces y ranuras de fundido, reglas de robo |
 | `src/engine/drum.rs`, `synth.rs` | Percusión sintetizada y voz sustractiva |
 | `src/engine/dsp.rs` | SVF TPT, PolyBLEP, seno polinómico, xorshift, soft clip, suavizado, flush-to-zero |
@@ -324,7 +345,7 @@ Los dos salen idénticos byte a byte con el binario nativo y con el aarch64 emul
 
 ## Dependencias
 
-H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan dependencias. H6 agrega `ron`.
+H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan dependencias. H6 agrega `ron`.
 
 | Crate | Por qué |
 |---|---|
@@ -339,8 +360,13 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan depen
 
 - **Archivo (H6)**: NUEVO también pide confirmación con cambios sin guardar; el diálogo suma **Start: guardar y
   seguir**; "nombre" renombra (mueve la carpeta) y GUARDAR COMO guarda una copia; en el editor de nombres ↑/↓ sin A
-  también cambian la letra; el navegador muestra las fechas en UTC. Tempo y swing no se editan en Proyecto todavía.
+  también cambian la letra; el navegador muestra las fechas en UTC.
   Detalle en [spec-ui](../../docs/solutions/groovebox/spec-ui.md#7-proyecto).
+- **Tempo y swing (H4)**: A + B los vuelve a 120 BPM y a recto (la spec no lo define en Proyecto).
+- **Instrumento (H4)**: solo el parámetro voces, con el cursor fijo; la pantalla completa es del H8.
+- **Voces (H4)**: una voz en relajación cuenta para el límite de su pista (regla 1 del ADR 0007 al pie de la letra):
+  en una pista de 4 voces con notas que se pisan de a 4, la quinta roba la que está terminando, con fundido. Al
+  bajar el límite mientras suena, la próxima nota roba todas las que sobran (no solo una).
 - **Formato (H6)**: filas de la canción como tuplas, `implicit_some`, instrumentos con los parámetros del motor actual
   y parámetros opcionales con el valor por defecto de su modelo; un `proyecto.ron` ilegible no se rota a `.bak`.
   Detalle en [spec-formatos](../../docs/solutions/groovebox/spec-formatos.md#implementado-h6). Sin autoguardado.
@@ -368,9 +394,9 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan depen
   Grilla ahora toca la canción y, sin seguir, el cabezal desaparece al pasar a la sección siguiente. La sección salta
   solo cuando el cabezal de la pista del cursor cambia de sección (no en cada paso), para que L2/R2 sigan sirviendo
   mientras suena. Sigue en la Grilla y la Frase (spec-ui); en la Canción y la Cadena el cursor no se mueve solo.
-- **X en la Canción y la Cadena**: la spec pide escuchar la frase completa una vez; por ahora suena la primera nota
-  de la frase (con la transposición de la entrada). La vista previa de una frase completa necesita un modo "una vez"
-  en el motor.
+- **X en la Canción y la Cadena (H4)**: la frase entera una vez, como pide la spec, pero con un reloj propio que
+  arranca al apretar X (no se cuantiza al cabezal si algo suena) e ignora el mute; Play y Stop la cortan. Con la
+  frase vacía suena el instrumento.
 - **A en una celda vacía de la Canción sin "última cadena"** (al abrir el proyecto) pone una cadena nueva; el doble
   toque inmediato se queda con esa en lugar de crear otra (no deja cadenas huérfanas). Lo mismo con FRA y FRASE.
 - **X en la Grilla y la Frase** suena con la transposición de la entrada de cadena (lo que se oye al reproducir).
@@ -386,6 +412,10 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan depen
   sin cortes en seco cuando varias pistas polifónicas cambian de acorde a la vez.
 
 ## Pendientes para la consola (device-ops)
+
+- H4: escuchar el swing (Proyecto → swing 66 %, Select + Start con la demo) y las notas largas del SINTE con 4 y con 1
+  voz (Instrumento); probar X en la Canción con algo sonando y parado. `groovebox bench` no cambió (el swing es un
+  cálculo por paso), pero conviene repetirlo con el binario nuevo.
 
 - H6: guardar, salir, volver a abrir la app (debe abrir el último proyecto) y apagar la consola de golpe justo después
   de guardar, para ver que `proyecto.ron` o el `.bak` sobreviven. Ver cuánto tarda GUARDAR en la SD (la interfaz se

@@ -1,0 +1,50 @@
+# Demo del H4 con el proyecto demo (GROOVEBOX_DEMO=1): tempo y swing en Proyecto, voces del SINTE
+# en Instrumento y el loop de la sección sonando con swing.
+# Uso sin placa de sonido ni escritorio (motor al ritmo real, sin salida):
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=null GROOVEBOX_DEMO=1 \
+#     GROOVEBOX_DATA=/tmp/gb-datos GROOVEBOX_SCRIPT=.../demo-h4.txt groovebox
+
+wait 300
+
+# Proyecto: swing 50 → 66 % (A + ↑ ×3 = +15, A + → = +1) y tempo 120 → 110 (A + ↓ = −1 BPM ×10)
+press select
+tap up
+release select
+tap up
+press a
+tap up 3
+tap right
+release a
+wait 200
+shot h4-proyecto-swing.bmp
+tap up
+press a
+tap down 10
+release a
+wait 200
+shot h4-proyecto-tempo.bmp
+tap b
+
+# Instrumento del SINTE (pista 8): voces 4 → 2 (A + ←)
+press select
+tap right 3
+release select
+tap r1 7
+press a
+tap left 2
+release a
+wait 200
+shot h4-instrumento-voces.bmp
+
+# Loop de la sección con swing, desde la Grilla: el cabezal se ve en los pasos atrasados
+press select
+tap left 3
+release select
+press select
+tap start
+release select
+wait 2300
+shot h4-grilla-swing.bmp
+tap start
+wait 200
+quit

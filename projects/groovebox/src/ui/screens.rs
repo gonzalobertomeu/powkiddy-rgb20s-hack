@@ -1,4 +1,5 @@
-//! Canción y Cadena (H5), Proyecto (ajustes y prueba de controles) y las pantallas pendientes.
+//! Canción y Cadena (H5), Proyecto (ajustes y prueba de controles), Instrumento (por ahora solo
+//! las voces, H4) y la pantalla pendiente (Mezcla).
 
 use super::{
     HEIGHT, Painter, R, View, WIDTH, cursor_color, fit, footer, footer_height, load_text,
@@ -6,6 +7,7 @@ use super::{
 };
 use crate::app::{App, ChainCol, FontSize, ProjectItem};
 use crate::input::Button;
+use crate::instrument::{DrumModel, Patch};
 use crate::model::{
     CHAIN_LEN, ChordKind, MAX_SONG_ROWS, NoteCell, PHRASE_STEPS, TRACKS, TrackKind, note_name,
 };
@@ -414,15 +416,71 @@ pub fn chain(p: &mut Painter, app: &App, view: &View) -> R {
     footer(p, app.screen, lines, &CHAIN_HELP)
 }
 
-/// Instrumento y Mezcla: llegan con el motor (H8 y H9).
+const INSTRUMENT_HELP: [&str; 5] = [
+    "A+cruz voces",
+    "A+B por defecto",
+    "X escuchar",
+    "L1/R1 pista",
+    "Start frase",
+];
+
+/// Instrumento (H4): por ahora solo el tipo y las voces de la pista; el resto llega en H8.
+pub fn instrument(p: &mut Painter, app: &App, view: &View) -> R {
+    let track = &app.project.tracks[app.track];
+    let inst = &track.instrument;
+    title(p, app, &format!("PISTA {} {}", app.track + 1, track.name))?;
+    let (ch, cw) = (p.ch, p.cw);
+    let label_x = 8 + 2 * cw;
+    let value_x = 8 + 14 * cw;
+    let mut y = title_height(p) + 8;
+
+    let kind = match inst.patch {
+        Patch::Drum(d) => match d.model {
+            DrumModel::Kick => "PERCUSIÓN: BOMBO",
+            DrumModel::Snare => "PERCUSIÓN: CAJA",
+            DrumModel::ClosedHat => "PERCUSIÓN: HAT CERRADO",
+            DrumModel::OpenHat => "PERCUSIÓN: HAT ABIERTO",
+            DrumModel::Clap => "PERCUSIÓN: PALMAS",
+        },
+        Patch::Sampler => "SAMPLE (llega en H7)",
+        Patch::Synth(_) => "SUSTRACTIVO",
+    };
+    p.text(label_x, y, "tipo", theme::DIM)?;
+    p.text(value_x, y, kind, theme::TEXT)?;
+    y += ch + 6;
+    p.text(8, y, "GENERAL", theme::FAINT)?;
+    y += ch;
+    p.fill(0, y, WIDTH, ch, theme::ROW_HI)?;
+    p.text(8, y, ">", cursor_color(view))?;
+    p.text(label_x, y, "voces", theme::TEXT)?;
+    p.text_inverted(value_x, y, &format!("{}", inst.voices), cursor_color(view))?;
+    y += ch + 4;
+
+    let mono = match inst.patch {
+        Patch::Synth(_) => "1 = mono: la nota nueva sigue sobre la anterior (legato).",
+        _ => "1 = mono: el golpe nuevo corta el anterior (con un fundido de 5 ms).",
+    };
+    let lines = [
+        mono,
+        "2 a 8: cada nota suena su largo y su relajación; las siguientes se",
+        "superponen. Con todas ocupadas, la nota nueva roba la más vieja de la pista.",
+        "",
+        "La bolsa tiene 16 voces para las 8 pistas (ADR 0007).",
+        "El resto de los parámetros llega con la pantalla completa (H8).",
+    ];
+    for line in lines {
+        p.text(label_x, y, &fit(line, p.cols() - 4), theme::DIM)?;
+        y += ch;
+    }
+    message_line(p, y + 4, app, view.now)?;
+    footer(p, app.screen, 2, &INSTRUMENT_HELP)
+}
+
+/// Mezcla: llega con el motor (H9).
 pub fn pending(p: &mut Painter, app: &App, view: &View) -> R {
     let track = &app.project.tracks[app.track];
     title(p, app, &format!("PISTA {} {}", app.track + 1, track.name))?;
-    let milestone = match app.screen {
-        crate::app::Screen::Instrument => "pantalla pendiente: llega con los instrumentos (H8)",
-        _ => "pantalla pendiente: llega con la mezcla (H9)",
-    };
-    let text = fit(milestone, p.cols() - 2);
+    let text = fit("pantalla pendiente: llega con la mezcla (H9)", p.cols() - 2);
     let w = p.text_width(&text);
     p.text((WIDTH - w) / 2, HEIGHT / 2 - p.ch, &text, theme::DIM)?;
     message_line(p, HEIGHT / 2 + p.ch, app, view.now)?;
@@ -463,6 +521,8 @@ pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
         let selected = ProjectItem::ALL[app.project_item] == item;
         let (label, value) = match item {
             ProjectItem::Name => ("nombre", format!("[{}]", app.project.name)),
+            ProjectItem::Tempo => ("tempo", format!("{:.1} BPM", app.project.tempo_bpm)),
+            ProjectItem::Swing => ("swing", swing_text(app.project.swing)),
             ProjectItem::Save => ("GUARDAR", String::new()),
             ProjectItem::SaveAs => ("GUARDAR COMO...", String::new()),
             ProjectItem::Load => ("CARGAR...", String::new()),
@@ -518,8 +578,10 @@ pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
         Ok(())
     };
 
-    item_row(p, y, ProjectItem::Name)?;
-    y += ch;
+    for item in [ProjectItem::Name, ProjectItem::Tempo, ProjectItem::Swing] {
+        item_row(p, y, item)?;
+        y += ch;
+    }
     let data = app
         .data
         .as_ref()
@@ -527,7 +589,6 @@ pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
             home_relative(d.root())
         });
     let info = [
-        ("tempo", format!("{:.1} BPM", app.project.tempo_bpm)),
         ("octava base", format!("{}", app.octave)),
         ("CPU de audio", load_text(app)),
         ("datos", data),
@@ -614,22 +675,34 @@ pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
     }
 
     message_line(p, bottom, app, view.now)?;
-    let help: &[&str] = if ProjectItem::ALL[app.project_item].is_action() {
-        &[
+    let help: &[&str] = match ProjectItem::ALL[app.project_item] {
+        ProjectItem::Tempo => &["A+izq/der ±0,1", "A+arr/abj ±1", "A+B 120", "B volver"],
+        ProjectItem::Swing => &["A+izq/der ±1", "A+arr/abj ±5", "A+B recto", "B volver"],
+        item if item.is_action() => &[
             "A ejecutar",
             "B volver",
             "Sel+abajo volver",
             "Sel+Start(1s) salir",
-        ]
-    } else {
-        &[
+        ],
+        _ => &[
             "A cambiar",
             "B volver",
             "Sel+abajo volver",
             "Sel+Start(1s) salir",
-        ]
+        ],
     };
     footer(p, app.screen, lines, help)
+}
+
+/// Swing con su nombre en los valores de referencia (spec-motor, "Swing").
+fn swing_text(swing: u8) -> String {
+    let name = match swing {
+        50 => " (recto)",
+        66 | 67 => " (tresillo)",
+        75 => " (medio paso)",
+        _ => "",
+    };
+    format!("{swing} %{name}")
 }
 
 /// La carpeta con `~` en lugar del home, como la escribiría el usuario.

@@ -140,7 +140,7 @@ groovebox/
 
 Validación al leer: las entradas de cadena a frases inexistentes se quitan (las siguientes suben), las celdas de la
 canción a cadenas inexistentes se vacían, los pasos con índice ≥ 16 se ignoran y los valores fuera de rango se ajustan
-(nota, inversión, LARGO al valor permitido más cercano, transposición, tempo 40–300, voces 1–8). Faltan pistas: se
+(nota, inversión, LARGO al valor permitido más cercano, transposición, tempo 40–300, swing 50–75 desde el H4, voces 1–8). Faltan pistas: se
 completan con el kit por defecto. Todo eso se avisa en pantalla, con la cantidad de cada caso.
 
 ### Versionado

@@ -4,11 +4,13 @@
 
 use crate::engine::{HeadPos, LoadReport, PlayMode, Playhead};
 use crate::gestures::{Dir, Gesture};
+use crate::instrument::{MAX_VOICES, default_voices};
 use crate::modal::{BROWSER_PAGE, Browser, Confirm, Modal, NameEditor, NamePurpose, Then};
 use crate::model::{
-    CHAIN_LEN, ChainId, Chord, DEFAULT_GATE, DEFAULT_VELOCITY, EditError, MAX_SONG_ROWS, NOTE_MAX,
-    NOTE_MIN, NoteCell, NoteSet, PHRASE_STEPS, PhraseId, Project, Section, Step, TEMPO_MAX,
-    TEMPO_MIN, TRACKS, TRANSPOSE_MAX, TrackKind, gate_nudge,
+    CHAIN_LEN, ChainId, Chord, DEFAULT_GATE, DEFAULT_TEMPO, DEFAULT_VELOCITY, EditError,
+    MAX_SONG_ROWS, NOTE_MAX, NOTE_MIN, NoteCell, NoteSet, PHRASE_STEPS, PhraseId, Project,
+    SWING_MAX, SWING_MIN, Section, Step, TEMPO_MAX, TEMPO_MIN, TRACKS, TRANSPOSE_MAX, TrackKind,
+    gate_nudge,
 };
 use crate::storage::{
     AppConfig, DataDir, FontChoice, LoadError, PROJECT_FILE, PROJECTS_DIR, valid_name,
@@ -109,6 +111,8 @@ pub enum FontSize {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProjectItem {
     Name,
+    Tempo,
+    Swing,
     Save,
     SaveAs,
     Load,
@@ -120,8 +124,10 @@ pub enum ProjectItem {
 }
 
 impl ProjectItem {
-    pub const ALL: [ProjectItem; 9] = [
+    pub const ALL: [ProjectItem; 11] = [
         ProjectItem::Name,
+        ProjectItem::Tempo,
+        ProjectItem::Swing,
         ProjectItem::Save,
         ProjectItem::SaveAs,
         ProjectItem::Load,
@@ -162,10 +168,19 @@ pub struct TrackMemory {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Audition {
     pub track: usize,
+    /// Con una frase, se escucha entera una vez (X en la Canción y la Cadena) y `notes` es su
+    /// primera nota.
+    pub phrase: Option<PhrasePreview>,
     pub notes: NoteSet,
     pub velocity: u8,
     /// Largo en ticks (`GATE_INF` = hasta la próxima nota); la percusión lo ignora.
     pub gate: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PhrasePreview {
+    pub phrase: PhraseId,
+    pub transpose: i8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -452,9 +467,7 @@ impl App {
                 None
             }
             Gesture::Tempo(d) => {
-                self.project.tempo_bpm =
-                    (self.project.tempo_bpm + d as f32).clamp(TEMPO_MIN, TEMPO_MAX);
-                self.modified = true;
+                self.set_tempo(self.project.tempo_bpm + d as f32);
                 None
             }
             // Start reproduce según la pantalla; Select + Start, el loop de la sección. Con algo
@@ -558,13 +571,28 @@ impl App {
         self.listen_at(self.section, step)
     }
 
-    /// X en la Canción y la Cadena: la primera nota de la frase de la sección (o el instrumento).
+    /// X en la Canción y la Cadena: la frase de la sección entera, una vez, con la transposición
+    /// de su entrada. Sin frase o sin notas, el instrumento.
     fn listen_phrase(&self, sec: Section) -> Option<Audition> {
         let first = self
             .project
             .phrase_at(self.track, sec)
             .and_then(|p| p.steps.iter().position(|s| s.root().is_some()));
-        self.listen_at(sec, first)
+        let mut audition = self.listen_at(sec, first)?;
+        if first.is_some()
+            && let Some(id) = self.project.phrase_id_at(self.track, sec)
+        {
+            let transpose = self
+                .project
+                .chain_at(self.track, sec.row)
+                .and_then(|c| c.entry(sec.entry))
+                .map_or(0, |e| e.transpose);
+            audition.phrase = Some(PhrasePreview {
+                phrase: id,
+                transpose,
+            });
+        }
+        Some(audition)
     }
 
     fn listen_at(&self, sec: Section, step: Option<usize>) -> Option<Audition> {
@@ -581,6 +609,7 @@ impl App {
         {
             return Some(Audition {
                 track: self.track,
+                phrase: None,
                 notes,
                 velocity: s.velocity,
                 gate: s.gate_ticks,
@@ -594,6 +623,7 @@ impl App {
         };
         Some(Audition {
             track: self.track,
+            phrase: None,
             notes,
             velocity: m.velocity,
             gate: m.gate,
@@ -1144,6 +1174,26 @@ impl App {
             Gesture::Insert if ProjectItem::ALL[self.project_item].is_action() => {
                 self.project_action(ProjectItem::ALL[self.project_item]);
             }
+            Gesture::Edit { dir, fast } if self.project_item_is_value() => {
+                match ProjectItem::ALL[self.project_item] {
+                    // ±0,1 / ±1 BPM, en décimas exactas (sin acumular error de f32).
+                    ProjectItem::Tempo => {
+                        let tenths = (self.project.tempo_bpm * 10.0).round() as i32;
+                        let tenths = tenths + dir_delta(dir, 1, 10, fast);
+                        self.set_tempo(tenths as f32 / 10.0);
+                    }
+                    _ => {
+                        let swing = i32::from(self.project.swing) + dir_delta(dir, 1, 5, fast);
+                        self.set_swing(swing);
+                    }
+                }
+            }
+            Gesture::Delete if self.project_item_is_value() => {
+                match ProjectItem::ALL[self.project_item] {
+                    ProjectItem::Tempo => self.set_tempo(DEFAULT_TEMPO),
+                    _ => self.set_swing(i32::from(SWING_MIN)),
+                }
+            }
             Gesture::Insert | Gesture::InsertNew | Gesture::Edit { .. } => {
                 match ProjectItem::ALL[self.project_item] {
                     ProjectItem::Font => {
@@ -1165,9 +1215,19 @@ impl App {
         None
     }
 
-    /// Instrumento y Mezcla (pendientes).
+    /// Instrumento (por ahora solo "voces", H4) y Mezcla (pendiente).
     fn handle_other(&mut self, g: Gesture) -> Option<Audition> {
         match g {
+            Gesture::Edit { dir, .. } if self.screen == Screen::Instrument => {
+                let voices = i32::from(self.project.tracks[self.track].instrument.voices);
+                self.set_voices(voices + dir_delta(dir, 1, 1, false));
+                None
+            }
+            Gesture::Delete if self.screen == Screen::Instrument => {
+                let kind = self.track_kind();
+                self.set_voices(i32::from(default_voices(self.track, kind)));
+                None
+            }
             Gesture::Listen => self.listen(None),
             Gesture::Section(d) => {
                 self.section = if d > 0 {
@@ -1233,6 +1293,41 @@ impl App {
         }
     }
 
+    /// Tempo y swing: valores del proyecto que se editan con A + cruz.
+    fn project_item_is_value(&self) -> bool {
+        matches!(
+            ProjectItem::ALL[self.project_item],
+            ProjectItem::Tempo | ProjectItem::Swing
+        )
+    }
+
+    fn set_tempo(&mut self, bpm: f32) {
+        let bpm = bpm.clamp(TEMPO_MIN, TEMPO_MAX);
+        if bpm != self.project.tempo_bpm {
+            self.project.tempo_bpm = bpm;
+            self.modified = true;
+        }
+    }
+
+    fn set_swing(&mut self, swing: i32) {
+        let swing = swing.clamp(i32::from(SWING_MIN), i32::from(SWING_MAX)) as u8;
+        if swing != self.project.swing {
+            self.project.swing = swing;
+            self.modified = true;
+        }
+    }
+
+    /// Voces de la pista actual (1–8). Las notas que ya suenan siguen; el límite nuevo se aplica
+    /// desde la próxima nota de la pista.
+    fn set_voices(&mut self, voices: i32) {
+        let voices = voices.clamp(1, i32::from(MAX_VOICES)) as u8;
+        let instrument = &mut self.project.tracks[self.track].instrument;
+        if voices != instrument.voices {
+            instrument.voices = voices;
+            self.modified = true;
+        }
+    }
+
     fn project_action(&mut self, item: ProjectItem) {
         match item {
             ProjectItem::Name => {
@@ -1253,7 +1348,11 @@ impl App {
             ProjectItem::Load => self.open_browser(),
             ProjectItem::New => self.unless_unsaved(Then::New),
             ProjectItem::Quit => self.request_quit(),
-            ProjectItem::Font | ProjectItem::AuditionOnEdit | ProjectItem::Follow => {}
+            ProjectItem::Tempo
+            | ProjectItem::Swing
+            | ProjectItem::Font
+            | ProjectItem::AuditionOnEdit
+            | ProjectItem::Follow => {}
         }
     }
 
@@ -2088,13 +2187,21 @@ mod tests {
         a.project.set_entry_transpose(6, a.section, 5).unwrap();
         let aud = a.handle(Gesture::Listen, 0).unwrap();
         assert_eq!(aud.notes.as_slice(), &[65]);
-        a.screen = Screen::Song;
-        let aud = a.handle(Gesture::Listen, 0).unwrap();
-        assert_eq!(
-            aud.notes.as_slice(),
-            &[65],
-            "X en la Canción: la primera nota"
-        );
+        assert_eq!(aud.phrase, None, "X en la Grilla: el paso");
+        let phrase = a.project.phrase_id_at(6, a.section).unwrap();
+        let expected = Some(PhrasePreview {
+            phrase,
+            transpose: 5,
+        });
+        for screen in [Screen::Song, Screen::Chain] {
+            a.screen = screen;
+            let aud = a.handle(Gesture::Listen, 0).unwrap();
+            assert_eq!(aud.phrase, expected, "{screen:?}: la frase entera, una vez");
+            assert_eq!(aud.notes.as_slice(), &[65]);
+        }
+        // Una frase sin notas: el instrumento.
+        a.project.step_mut(6, a.section, 0).unwrap().note = NoteCell::Empty;
+        assert_eq!(a.handle(Gesture::Listen, 0).unwrap().phrase, None);
     }
 
     #[test]
@@ -2139,6 +2246,88 @@ mod tests {
         assert!(a.confirming_quit());
         a.handle(Gesture::Insert, 0);
         assert!(a.quit, "A: salir sin guardar");
+    }
+
+    #[test]
+    fn tempo_and_swing_are_edited_in_project() {
+        let mut a = app();
+        a.handle(Gesture::Screen(Dir::Up), 0);
+        assert_eq!(a.screen, Screen::Project);
+        a.handle(Gesture::Move(Dir::Up), 0);
+        a.handle(Gesture::Move(Dir::Up), 0);
+        assert_eq!(ProjectItem::ALL[a.project_item], ProjectItem::Tempo);
+        a.handle(Gesture::Insert, 0);
+        assert!(!a.modified, "A solo no cambia un valor");
+        for _ in 0..3 {
+            a.handle(edit(Dir::Right), 0);
+        }
+        assert_eq!(a.project.tempo_bpm, 120.3);
+        assert!(a.modified);
+        a.handle(edit(Dir::Up), 0);
+        a.handle(
+            Gesture::Edit {
+                dir: Dir::Down,
+                fast: true,
+            },
+            0,
+        );
+        assert_eq!(a.project.tempo_bpm, 117.3);
+        a.handle(Gesture::Delete, 0);
+        assert_eq!(a.project.tempo_bpm, 120.0, "A + B: valor por defecto");
+        // Mantenido, ±4 BPM por repetición.
+        for _ in 0..50 {
+            a.handle(
+                Gesture::Edit {
+                    dir: Dir::Up,
+                    fast: true,
+                },
+                0,
+            );
+        }
+        assert_eq!(a.project.tempo_bpm, TEMPO_MAX);
+
+        a.handle(Gesture::Move(Dir::Down), 0);
+        assert_eq!(ProjectItem::ALL[a.project_item], ProjectItem::Swing);
+        a.handle(edit(Dir::Up), 0);
+        a.handle(edit(Dir::Right), 0);
+        assert_eq!(a.project.swing, 56);
+        for _ in 0..10 {
+            a.handle(edit(Dir::Up), 0);
+        }
+        assert_eq!(a.project.swing, SWING_MAX);
+        a.handle(Gesture::Delete, 0);
+        assert_eq!(a.project.swing, SWING_MIN);
+        a.handle(edit(Dir::Left), 0);
+        assert_eq!(a.project.swing, SWING_MIN);
+    }
+
+    #[test]
+    fn voices_are_edited_in_instrument() {
+        let mut a = app();
+        a.track = 7;
+        a.screen = Screen::Instrument;
+        assert_eq!(a.project.tracks[7].instrument.voices, 4);
+        a.handle(edit(Dir::Left), 0);
+        a.handle(edit(Dir::Down), 0);
+        assert_eq!(a.project.tracks[7].instrument.voices, 2);
+        assert!(a.modified);
+        for _ in 0..10 {
+            a.handle(edit(Dir::Up), 0);
+        }
+        assert_eq!(a.project.tracks[7].instrument.voices, MAX_VOICES);
+        a.handle(Gesture::Delete, 0);
+        assert_eq!(
+            a.project.tracks[7].instrument.voices, 4,
+            "A + B: las del kit"
+        );
+        a.handle(Gesture::Track(-1), 0);
+        assert_eq!(a.track, 6);
+        a.handle(Gesture::Delete, 0);
+        assert_eq!(a.project.tracks[6].instrument.voices, 1, "el bajo es mono");
+        for _ in 0..3 {
+            a.handle(edit(Dir::Left), 0);
+        }
+        assert_eq!(a.project.tracks[6].instrument.voices, 1);
     }
 
     #[test]

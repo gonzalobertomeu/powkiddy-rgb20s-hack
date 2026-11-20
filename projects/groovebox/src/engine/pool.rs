@@ -153,11 +153,18 @@ impl VoicePool {
     /// Nunca elige una voz del mismo `trigger` (el acorde que se está disparando) si hay otra.
     pub fn allocate(&mut self, track: u8, limit: u8, trigger: u64) -> usize {
         let other = |v: &Voice| v.trigger != trigger;
-        let used = self.voices().filter(|v| v.track == track).count();
-        if used >= usize::from(limit)
+        // Si se bajó el límite de la pista mientras sonaba, puede haber más de `limit`: se roban
+        // las más viejas hasta dejar lugar para esta (a lo sumo 16 vueltas).
+        let mut used = self.voices().filter(|v| v.track == track).count();
+        let mut freed = None;
+        while used >= usize::from(limit)
             && let Some(i) = self.oldest(|v| v.track == track && other(v))
         {
             self.steal(i);
+            freed = Some(i);
+            used -= 1;
+        }
+        if let Some(i) = freed {
             return i;
         }
         if let Some(i) = self.voices.iter().position(Option::is_none) {

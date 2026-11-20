@@ -178,8 +178,9 @@ vacía sin "última cadena" (recién abierto el proyecto) pone una cadena nueva 
 A sobre una celda con cadena la toma como "última"; A + cruz sobre un número que no existe crea esa cadena vacía. La
 celda que suena se dibuja en verde con una barra de avance por la cadena y `>` marca las filas con algún cabezal. La
 columna LARGO va con la fuente chica (entra con las dos fuentes); con 12×24 los nombres de pista quedan en 3 letras.
-**X** suena la primera nota de la primera frase de la cadena (desvío: la frase completa "una vez" necesita un modo de
-vista previa en el motor). La selección (Y) y pegar llegan en H10.
+**X** toca la primera frase de la cadena entera, **una vez**, con su transposición (H4: vista previa del motor,
+[spec-motor](spec-motor.md#modos-de-reproducción)); si la frase no tiene notas, suena el instrumento. La selección (Y) y
+pegar llegan en H10.
 
 ### 2. Grilla
 
@@ -284,8 +285,8 @@ Transiciones: Select + ← Grilla · Select + → Frase (la de la posición bajo
 
 **Implementado (H5)**: cursor en dos columnas (FRASE y TRANSP.), cabezal (`>` en la posición y barra de avance), vista
 previa de la frase bajo el cursor (solo con 8×16). En una fila sin cadena, A en FRASE crea la cadena y la frase
-(creación implícita, como en la Grilla); una posición después de un hueco avisa. X: la primera nota de la frase, con la
-transposición (mismo desvío que en Canción).
+(creación implícita, como en la Grilla); una posición después de un hueco avisa. X: la frase de la posición entera, una
+vez, con la transposición (H4, como en la Canción).
 
 ### 4. Frase (tracker)
 
@@ -439,6 +440,11 @@ Cambiar el **tipo** abre un diálogo ("Cambiar el tipo borra los parámetros de 
 
 Transiciones: Select + ← Frase · Select + ↑ Proyecto · Select + ↓ Mezcla · A sobre "archivo" → Navegador.
 
+**Implementado (H4), parcial:** la pantalla muestra el tipo de la pista y un solo parámetro, **voces** (GENERAL), con
+el cursor fijo en él: A + cruz ±1 (1–8), A + B vuelve al valor por defecto (el del kit para esa pista si sigue con el
+mismo tipo; si no, el del tipo), X escucha, L1/R1 cambian de pista y Start toca el loop de la frase. Debajo, una
+explicación de mono / poli y del robo. Los demás parámetros, la navegación en 2D y el cambio de tipo llegan en H8.
+
 ### 6. Mezcla
 
 **Propósito:** balance, envíos y efectos globales.
@@ -533,8 +539,12 @@ PROYECTO                                                              beat_01*
   proyecto nuevo se llama `proyecto-NNN` (el primer número sin carpeta) y se puede renombrar.
 - Junto al nombre: `* sin guardar` o `solo lectura` (archivo de un formato más nuevo que la app). En el título, `*`
   como en todas las pantallas.
-- Tempo, octava, CPU y la carpeta de datos se muestran como información (tempo y swing todavía no se editan acá:
-  el tempo sigue en Select + L2/R2). Los ajustes (fuente, audición, seguir reproducción) se guardan en `config.ron`.
+- **Tempo y swing (H4)** son filas del cursor debajo de "nombre": A + ←/→ ±0,1 BPM y ±1 %, A + ↑/↓ ±1 BPM y ±5 %
+  (×4 manteniendo más de 1 s), como pide la tabla; A solo no hace nada. Desvío: **A + B** vuelve a 120 BPM o al swing
+  recto (50 %). El swing muestra el nombre de los valores de referencia (recto, tresillo en 66–67 %, medio paso). Select
+  + L2/R2 sigue cambiando el tempo en todas las pantallas. Se guardan en el proyecto (no en `config.ron`).
+- Octava, CPU y la carpeta de datos se muestran como información. Los ajustes (fuente, audición, seguir reproducción)
+  se guardan en `config.ron`.
 - Las acciones se ejecutan con **un toque de A**; un doble toque no las repite. La prueba de controles y la muestra
   de fuentes se dibujan solo si entran (con la fuente de 12×24 se omiten).
 - Select + Start mantenido 1 s y SALIR pasan por el mismo diálogo. En el simulador, Esc pregunta y un segundo Esc sale.

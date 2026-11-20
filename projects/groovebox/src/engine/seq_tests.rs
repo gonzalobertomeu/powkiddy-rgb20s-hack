@@ -705,3 +705,299 @@ fn song_mode_does_not_allocate() {
     assert_eq!(allocs, 0);
     assert!(e.trigger_log.len() > 100);
 }
+
+// --- Swing (H4) ---
+
+/// Muestra exacta del paso `k` con swing `s` (spec-motor, "Swing").
+fn swung(k: u64, bpm: f32, s: u8) -> u64 {
+    let delay = if k % 2 == 1 {
+        sequencer::swing_fraction(s)
+    } else {
+        0.0
+    };
+    ((k as f64 + delay) * sps(bpm)).round() as u64
+}
+
+fn every_step(e: &mut Engine) {
+    for i in 0..PHRASE_STEPS {
+        set(e, 0, i, note(60, 6));
+    }
+}
+
+#[test]
+fn swing_delays_the_second_step_of_each_pair_on_the_exact_sample() {
+    for (bpm, s) in [(120.0, 66), (120.0, 75), (133.0, 58), (97.3, 71)] {
+        for block in [7, 32, 256, 1000] {
+            let mut e = engine(bpm);
+            silence_all(&mut e);
+            every_step(&mut e);
+            e.handle(Command::SetSwing(s));
+            e.handle(Command::Play(SEC0));
+            let frames = (sps(bpm) * 33.0) as usize;
+            render(&mut e, frames, block);
+            let expected: Vec<u64> = (0..33)
+                .map(|k| swung(k, bpm, s))
+                .filter(|&f| f < frames as u64)
+                .collect();
+            assert_eq!(
+                frames_of(&e, 0),
+                expected,
+                "{bpm} BPM, swing {s}, bloques de {block}"
+            );
+        }
+    }
+    // 120 BPM: un paso son 6000 muestras; con 75 % el segundo se atrasa medio paso.
+    assert_eq!(swung(1, 120.0, 75), 9_000);
+    assert_eq!(swung(3, 120.0, 66), 18_000 + 1_920);
+}
+
+#[test]
+fn swing_out_of_range_is_clamped() {
+    for (s, like) in [(0, 50), (49, 50), (90, 75), (255, 75)] {
+        let mut e = engine(120.0);
+        silence_all(&mut e);
+        every_step(&mut e);
+        e.handle(Command::SetSwing(s));
+        e.handle(Command::Play(SEC0));
+        render(&mut e, 13_000, 256);
+        let expected: Vec<u64> = (0..3).map(|k| swung(k, 120.0, like)).collect();
+        assert_eq!(frames_of(&e, 0), expected, "swing {s}");
+    }
+}
+
+#[test]
+fn swing_does_not_drift() {
+    let loops = 40;
+    let (bpm, s) = (133.0, 63);
+    let mut e = engine(bpm);
+    silence_all(&mut e);
+    every_step(&mut e);
+    e.handle(Command::SetSwing(s));
+    e.handle(Command::Play(SEC0));
+    let steps = loops * PHRASE_STEPS as u64;
+    render(&mut e, (sps(bpm) * steps as f64) as usize, 256);
+    let got = frames_of(&e, 0);
+    assert_eq!(got.len() as u64, steps);
+    for (k, &f) in got.iter().enumerate() {
+        assert_eq!(f, swung(k as u64, bpm, s), "paso {k}");
+    }
+}
+
+#[test]
+fn tempo_change_while_a_swung_step_waits_keeps_its_phase() {
+    let mut e = engine(120.0);
+    silence_all(&mut e);
+    every_step(&mut e);
+    e.handle(Command::SetSwing(75));
+    e.handle(Command::Play(SEC0));
+    // El paso 1 está en la grilla en 6000 y suena en 9000: en 7500 ya esperó la mitad del atraso.
+    render(&mut e, 7_500, 250);
+    e.handle(Command::SetTempo(240.0));
+    render(&mut e, 10_000, 250);
+    // Al doble de tempo, la otra mitad son 750 muestras; después, la grilla cada 3000 desde 6750.
+    assert_eq!(frames_of(&e, 0), [0, 8_250, 9_750, 14_250, 15_750]);
+}
+
+#[test]
+fn swing_changes_apply_from_the_next_step() {
+    let mut e = engine(120.0);
+    silence_all(&mut e);
+    every_step(&mut e);
+    e.handle(Command::SetSwing(75));
+    e.handle(Command::Play(SEC0));
+    render(&mut e, 7_000, 250);
+    // Sin swing, el paso 1 ya debería haber sonado: suena en la muestra siguiente, sin perderse.
+    e.handle(Command::SetSwing(50));
+    render(&mut e, 6_000, 250);
+    e.handle(Command::SetSwing(60));
+    render(&mut e, 8_000, 250);
+    assert_eq!(frames_of(&e, 0), [0, 7_000, 12_000, 18_000 + 1_200]);
+}
+
+#[test]
+fn play_restarts_the_swing_pairs() {
+    let mut e = engine(120.0);
+    silence_all(&mut e);
+    every_step(&mut e);
+    e.handle(Command::SetSwing(75));
+    e.handle(Command::Play(SEC0));
+    render(&mut e, 10_000, 250); // pasos 0 y 1: el próximo es par
+    e.handle(Command::Play(PlayMode::Section { row: 0, entry: 0 }));
+    render(&mut e, 10_000, 250);
+    assert_eq!(frames_of(&e, 0), [0, 9_000, 10_000, 19_000]);
+}
+
+// --- Voces por pista: notas largas superpuestas (H4) ---
+
+fn synth_with_voices(voices: u8) -> Instrument {
+    Instrument::new(Patch::Synth(crate::instrument::SynthParams::poly()), voices)
+}
+
+/// Notas de la pista que todavía tienen el gate abierto, de grave a aguda.
+fn held_notes(e: &Engine, track: u8) -> Vec<u8> {
+    let mut notes: Vec<u8> = e
+        .pool()
+        .voices()
+        .filter(|v| v.track == track && v.state == VoiceState::Held)
+        .map(|v| v.note)
+        .collect();
+    notes.sort_unstable();
+    notes
+}
+
+/// Una nota cada 2 pasos (60, 62, 64...) de 8 pasos de largo: se pisan de a 4.
+fn overlapping_phrase(e: &mut Engine) {
+    for i in (0..PHRASE_STEPS).step_by(2) {
+        set(e, 7, i, note(60 + i as u8, 8 * TICKS_PER_STEP));
+    }
+}
+
+#[test]
+fn long_notes_overlap_up_to_the_track_voices() {
+    let mut e = engine(120.0);
+    e.handle(Command::SetInstrument {
+        track: 7,
+        instrument: synth_with_voices(4),
+    });
+    overlapping_phrase(&mut e);
+    e.handle(Command::Play(SEC0));
+    // Pasos 0, 2, 4 y 6 sonando a la vez (largo 8 pasos), sin robar nada.
+    render(&mut e, 6 * 6_000 + 10, 256);
+    assert_eq!(held_notes(&e, 7), [60, 62, 64, 66]);
+    assert_eq!(e.pool().fading(), 0);
+    // Paso 8: la del paso 0 termina en esa muestra, pero sigue ocupando una de las 4 voces de
+    // la pista (ADR 0007, regla 1): es la más vieja y se roba con fundido.
+    render(&mut e, 2 * 6_000, 256);
+    assert_eq!(held_notes(&e, 7), [62, 64, 66, 68]);
+    assert_eq!(e.pool().voices().filter(|v| v.track == 7).count(), 4);
+    assert_eq!(e.pool().fading(), 1);
+}
+
+#[test]
+fn with_fewer_voices_the_oldest_note_of_the_track_is_stolen() {
+    let mut e = engine(120.0);
+    e.handle(Command::SetInstrument {
+        track: 7,
+        instrument: synth_with_voices(2),
+    });
+    overlapping_phrase(&mut e);
+    e.handle(Command::Play(SEC0));
+    render(&mut e, 4 * 6_000 + 10, 256);
+    // Paso 4: la del paso 0 (todavía sostenida) se roba y se funde.
+    assert_eq!(held_notes(&e, 7), [62, 64]);
+    assert_eq!(e.pool().voices().filter(|v| v.track == 7).count(), 2);
+    assert_eq!(e.pool().fading(), 1);
+}
+
+#[test]
+fn lowering_the_voices_while_playing_applies_on_the_next_note() {
+    let mut e = engine(120.0);
+    e.handle(Command::SetInstrument {
+        track: 7,
+        instrument: synth_with_voices(4),
+    });
+    overlapping_phrase(&mut e);
+    e.handle(Command::Play(SEC0));
+    render(&mut e, 6 * 6_000 + 10, 256);
+    assert_eq!(held_notes(&e, 7), [60, 62, 64, 66]);
+    e.handle(Command::SetInstrument {
+        track: 7,
+        instrument: synth_with_voices(2),
+    });
+    assert_eq!(held_notes(&e, 7), [60, 62, 64, 66], "las que suenan siguen");
+    render(&mut e, 2 * 6_000, 256);
+    // Paso 8: la del paso 0 terminó; de las otras 3 se roban 2 para que entre la nueva.
+    assert_eq!(held_notes(&e, 7), [66, 68]);
+    assert_eq!(e.pool().voices().filter(|v| v.track == 7).count(), 2);
+}
+
+#[test]
+fn drums_with_more_voices_let_the_tails_ring() {
+    let mut e = engine(120.0);
+    let mut hat = crate::instrument::default_kit()[3].1;
+    for (voices, expected) in [(1, 1), (3, 3)] {
+        hat.voices = voices;
+        e.handle(Command::SetInstrument {
+            track: 3,
+            instrument: hat,
+        });
+        for i in 0..PHRASE_STEPS {
+            set(&mut e, 3, i, note(60, 24));
+        }
+        e.handle(Command::Play(SEC0));
+        render(&mut e, 4 * 6_000 + 10, 256);
+        let ringing = e.pool().voices().filter(|v| v.track == 3).count();
+        assert_eq!(ringing, expected, "{voices} voces");
+        e.handle(Command::Stop);
+    }
+}
+
+// --- Vista previa de una frase (X en la Canción y la Cadena) ---
+
+fn preview(track: u8, phrase: u8, transpose: i8) -> Command {
+    Command::PreviewPhrase {
+        track,
+        phrase,
+        transpose,
+    }
+}
+
+#[test]
+fn preview_plays_the_phrase_once_with_transpose_and_swing() {
+    let mut e = engine(120.0);
+    set(&mut e, 7, 0, note(60, GATE_INF));
+    set(&mut e, 7, 5, note(64, 24));
+    set(&mut e, 7, 15, note(67, 24));
+    e.handle(Command::SetSwing(75));
+    let mut buf = vec![0.0f32; 10 * 2];
+    let allocs = crate::alloc_check::count(|| {
+        e.handle(preview(7, 7, 2));
+        for _ in 0..9_301 {
+            e.render(&mut buf, 2);
+        }
+    });
+    assert_eq!(allocs, 0);
+    assert!(!e.is_playing(), "no arranca el secuenciador");
+    // Pasos 5 y 15 son segundos de su par: medio paso tarde.
+    assert_eq!(
+        notes_of(&e, 7),
+        [(0, 62), (5 * 6_000 + 3_000, 66), (15 * 6_000 + 3_000, 69)]
+    );
+    assert!(
+        track_states(&e, 7).contains(&VoiceState::Held),
+        "la INF sigue"
+    );
+    render(&mut e, 6_000, 256);
+    // Al terminar la frase (paso 16) se suelta la INF y no se repite.
+    assert!(!track_states(&e, 7).contains(&VoiceState::Held));
+    render(&mut e, 20 * 6_000, 256);
+    assert_eq!(notes_of(&e, 7).len(), 3);
+}
+
+#[test]
+fn preview_follows_tempo_and_is_cut_by_play_and_stop() {
+    let mut e = engine(120.0);
+    silence_all(&mut e);
+    for i in 0..PHRASE_STEPS {
+        set(&mut e, 3, i, note(60, 24));
+    }
+    e.handle(preview(3, 3, 0));
+    render(&mut e, 3_000, 250);
+    e.handle(Command::SetTempo(240.0));
+    render(&mut e, 5_000, 250);
+    assert_eq!(frames_of(&e, 3), [0, 4_500, 7_500]);
+    // Stop sin nada sonando también corta la vista previa.
+    e.handle(Command::Stop);
+    render(&mut e, 20_000, 250);
+    assert_eq!(frames_of(&e, 3).len(), 3);
+
+    e.handle(preview(3, 3, 0));
+    render(&mut e, 1_000, 250);
+    e.handle(Command::Play(PlayMode::Phrase {
+        track: 0,
+        row: 0,
+        entry: 0,
+    }));
+    render(&mut e, 10_000, 250);
+    assert_eq!(frames_of(&e, 3).len(), 4, "Play corta la vista previa");
+}

@@ -17,7 +17,7 @@ use dsp::{Smoother, soft_clip};
 pub use load::{LoadMeter, LoadReport};
 use pool::{Source, Voice, VoicePool, VoiceState};
 pub use sequencer::{HeadPos, PlayMode, Playhead};
-use sequencer::{Sequencer, Trigger, samples_per_step};
+use sequencer::{PreviewEvent, Sequencer, Trigger, samples_per_step};
 use synth::{SynthSetup, SynthVoice};
 
 use crate::instrument::{Instrument, MAX_VOICES, Patch, default_kit, velocity_gain, volume_gain};
@@ -46,6 +46,8 @@ pub enum Command {
         instrument: Instrument,
     },
     SetTempo(f32),
+    /// Swing global en % (50–75; fuera de rango se recorta).
+    SetSwing(u8),
     SetMix {
         track: u8,
         mute: bool,
@@ -68,6 +70,13 @@ pub enum Command {
     },
     Play(PlayMode),
     Stop,
+    /// Escuchar una frase entera una vez en una pista (X en la Canción y la Cadena), aunque el
+    /// secuenciador esté parado. Play y Stop la cortan.
+    PreviewPhrase {
+        track: u8,
+        phrase: PhraseId,
+        transpose: i8,
+    },
     /// Escuchar notas en una pista con su instrumento; `len` dice cuántas de `notes` valen
     /// (de grave a aguda, como las da `Chord::notes`).
     Audition {
@@ -186,6 +195,7 @@ impl Engine {
                     self.seq.set_samples_per_step(sps, self.frame);
                 }
             }
+            Command::SetSwing(swing) => self.seq.set_swing(swing),
             Command::SetMix { track, mute, solo } => {
                 if let Some(state) = self.tracks.get_mut(usize::from(track)) {
                     state.mute = mute;
@@ -211,15 +221,27 @@ impl Engine {
                     .set_song_cell(usize::from(row), usize::from(track), chain);
             }
             Command::Play(mode) => {
+                self.cancel_preview();
                 if self.seq.is_playing() {
                     self.release_all();
                 }
                 self.seq.play(mode, self.frame);
             }
             Command::Stop => {
+                self.cancel_preview();
                 if self.seq.is_playing() {
                     self.seq.stop();
                     self.release_all();
+                }
+            }
+            Command::PreviewPhrase {
+                track,
+                phrase,
+                transpose,
+            } => {
+                if usize::from(track) < TRACKS {
+                    self.cancel_preview();
+                    self.seq.start_preview(track, phrase, transpose, self.frame);
                 }
             }
             Command::Audition {
@@ -257,6 +279,13 @@ impl Engine {
             }
         }
         self.seq.set_audible(audible);
+    }
+
+    /// Corta la vista previa: lo que tenía INF en su pista se suelta.
+    fn cancel_preview(&mut self) {
+        if let Some(track) = self.seq.cancel_preview() {
+            self.pool.release_track(track, true);
+        }
     }
 
     fn release_all(&mut self) {
@@ -340,31 +369,67 @@ impl Engine {
     fn fire_step(&mut self) {
         let triggers = self.seq.fire();
         for (t, trigger) in triggers.into_iter().enumerate() {
-            let Some(trigger) = trigger else { continue };
-            #[cfg(test)]
-            if self.trigger_log.len() < self.trigger_log.capacity() {
-                let root = match trigger {
-                    Trigger::Notes { root, .. } => root,
-                    Trigger::Off => 0,
-                };
-                self.trigger_log.push((self.frame, t as u8, root));
+            if let Some(trigger) = trigger {
+                self.apply(t, trigger);
             }
-            match trigger {
-                Trigger::Off => self.pool.release_track(t as u8, false),
-                Trigger::Notes {
-                    root,
-                    chord,
-                    velocity,
-                    gate_ticks,
-                } => {
-                    let notes = match self.tracks[t].setup {
-                        Setup::Drum(_) => NoteSet::single(root),
-                        _ => chord.notes(root),
-                    };
-                    let gate = (gate_ticks != GATE_INF)
-                        .then(|| self.ticks_to_samples(u32::from(gate_ticks)));
-                    self.note_on(t, notes.as_slice(), velocity, gate);
-                }
+        }
+    }
+
+    /// Dispara el paso de la vista previa que cae en la muestra actual (o la termina).
+    fn fire_preview(&mut self) {
+        match self.seq.fire_preview() {
+            Some(PreviewEvent::Step {
+                track,
+                trigger: Some(trigger),
+            }) => self.apply(usize::from(track), trigger),
+            Some(PreviewEvent::End { track }) => self.pool.release_track(track, true),
+            _ => {}
+        }
+    }
+
+    fn apply(&mut self, t: usize, trigger: Trigger) {
+        #[cfg(test)]
+        if self.trigger_log.len() < self.trigger_log.capacity() {
+            let root = match trigger {
+                Trigger::Notes { root, .. } => root,
+                Trigger::Off => 0,
+            };
+            self.trigger_log.push((self.frame, t as u8, root));
+        }
+        match trigger {
+            Trigger::Off => self.pool.release_track(t as u8, false),
+            Trigger::Notes {
+                root,
+                chord,
+                velocity,
+                gate_ticks,
+            } => {
+                let notes = match self.tracks[t].setup {
+                    Setup::Drum(_) => NoteSet::single(root),
+                    _ => chord.notes(root),
+                };
+                let gate =
+                    (gate_ticks != GATE_INF).then(|| self.ticks_to_samples(u32::from(gate_ticks)));
+                self.note_on(t, notes.as_slice(), velocity, gate);
+            }
+        }
+    }
+
+    /// Dispara lo que cae en la muestra actual (pasos del secuenciador y de la vista previa) y
+    /// devuelve la muestra del próximo evento.
+    fn fire_due_events(&mut self) -> Option<u64> {
+        loop {
+            let step = self.seq.next_step_frame();
+            let preview = self.seq.next_preview_frame();
+            if step.is_some_and(|f| f <= self.frame) {
+                self.fire_step();
+            } else if preview.is_some_and(|f| f <= self.frame) {
+                self.fire_preview();
+            } else {
+                return match (step, preview) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                };
             }
         }
     }
@@ -415,13 +480,9 @@ impl Engine {
         let frames = out.len() / channels;
         let mut pos = 0;
         while pos < frames {
-            while let Some(due) = self.seq.next_step_frame()
-                && due <= self.frame
-            {
-                self.fire_step();
-            }
+            let next_event = self.fire_due_events();
             let mut n = (BLOCK - (self.frame % BLOCK as u64) as usize).min(frames - pos);
-            if let Some(due) = self.seq.next_step_frame() {
+            if let Some(due) = next_event {
                 n = n.min((due - self.frame) as usize);
             }
             let chunk = &mut out[pos * channels..(pos + n) * channels];

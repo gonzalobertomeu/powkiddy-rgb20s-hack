@@ -91,6 +91,11 @@ Decisión: [ADR 0007](../../decisions/0007-polifonia-en-el-mvp.md).
   - **1 (mono):** una nota nueva corta la anterior. En percusión y sampler, la anterior pasa a una ranura de fundido. En el sustractivo, la envolvente se redispara desde su nivel actual (legato) y, en v1, el glide desliza el tono.
   - **2–8 (poli):** cada nota suena hasta que termina su largo (gate) y luego entra en relajación. Las notas de pasos siguientes se superponen.
 - Valores por defecto: percusión 1, sampler 2, sustractivo 4 (la pista de bajo del kit, 1).
+- **Implementado (H3 y H4):** las notas de largo fijo de una pista poli se superponen hasta su límite; una voz en
+  relajación sigue contando para el límite de su pista (regla 1 de abajo), así que la nota que llega justo cuando
+  termina el largo de otra la roba con fundido. Cambiar las voces mientras suena no corta nada: el límite nuevo se
+  aplica en la próxima nota de la pista, que roba las más viejas que hagan falta para quedar dentro del límite. Se
+  edita en la pantalla Instrumento (por ahora solo ese parámetro, [spec-ui](spec-ui.md#5-instrumento)).
 
 ### Asignación y robo de voces
 
@@ -241,10 +246,21 @@ paso, así el disparo cae en su muestra exacta dentro del buffer y, con buffers 
 tamaño de buffer. Un cambio de tempo conserva la fase del paso en curso (si faltaba medio paso, falta medio paso al tempo
 nuevo). Cuando lleguen micro, retrig o swing (H4), el próximo evento pasa a ser `inicio del paso + desplazamiento`.
 
+**Implementado (H4):** el swing ya usa ese esquema: el paso `n` cae en `round(origen + n · muestras_por_paso +
+atraso)`, con `atraso = muestras_por_paso · (s − 50) / 50` si `n` es impar (el segundo de cada par) y 0 si es par. La
+paridad se cuenta desde Play (no se reinicia con el tempo), así que coincide con el paso de cada cabezal: las frases
+tienen 16 pasos y todos los cabezales arrancan juntos. Un cambio de tempo conserva la fase respecto de la **grilla
+recta**: si el paso esperaba su swing (la grilla ya pasó), la fracción ya esperada se conserva al tempo nuevo.
+
 ### Swing
 
 Con swing `s` en 50–75 %, los pasos pares de cada par (2, 4, 6…) se atrasan `duración_paso · (s − 50) / 50`.
 50 % = recto; ~67 % = tresillo; 75 % = medio paso.
+
+**Implementado (H4):** `SetSwing(u8)` (fuera de rango se recorta; al leer el archivo, también, y se cuenta como
+"valor fuera de rango"). Se aplica desde el próximo paso: si al bajar el swing el paso que esperaba ya pasó su
+momento, suena en la muestra siguiente (no se pierde). El largo de las notas no cambia con el swing (sigue en ticks
+rectos). Se edita en Proyecto ([spec-ui](spec-ui.md#7-proyecto)).
 
 ### Cabezales por pista
 
@@ -292,6 +308,12 @@ no por número de cadena o frase: el cabezal se resuelve igual que en la canció
 se oye), el loop de frase suena con la transposición de su entrada y la interfaz dibuja el cabezal sin traducir IDs.
 Stop suelta todas las voces sostenidas (siguen su relajación). El motor publica `Event::Playhead` (posición de las 8
 pistas) cada vez que cambia el paso, y lo reintenta si la cola de eventos está llena.
+
+**Vista previa de una frase (H4, pendiente del H5):** X en la Canción y la Cadena manda `PreviewPhrase { track,
+phrase, transpose }`: los 16 pasos de esa frase suenan **una vez** en la pista, con un reloj propio que arranca en la
+muestra en que llega el comando (suena aunque el secuenciador esté parado) y comparte tempo y swing. Al terminar el
+paso 16 se sueltan las notas INF de la pista. No es un modo de reproducción: no mueve los cabezales ni cambia lo que
+la interfaz cree que suena; Play y Stop la cortan, y otra X la reemplaza. Ignora el mute (como la audición).
 
 ### Edición en vivo
 
