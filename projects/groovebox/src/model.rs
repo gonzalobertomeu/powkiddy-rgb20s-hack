@@ -6,6 +6,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::instrument::{Instrument, default_kit};
 
 pub const TRACKS: usize = 8;
@@ -17,6 +19,8 @@ pub const MAX_SONG_ROWS: usize = 256;
 pub const TICKS_PER_STEP: u16 = 24;
 /// Transposición de una entrada de cadena, en semitonos (±4 octavas).
 pub const TRANSPOSE_MAX: i8 = 48;
+pub const TEMPO_MIN: f32 = 40.0;
+pub const TEMPO_MAX: f32 = 300.0;
 
 pub const NOTE_MIN: u8 = 12; // C-0
 pub const NOTE_MAX: u8 = 127; // G-9
@@ -37,8 +41,8 @@ pub enum NoteCell {
     #[default]
     Empty,
     On(u8),
-    /// Libera todas las voces de la pista.
-    #[expect(dead_code, reason = "la spec todavía no define cómo se ingresa un OFF")]
+    /// Libera todas las voces de la pista. Se lee del archivo; la spec todavía no define cómo
+    /// se ingresa con los controles.
     Off,
 }
 
@@ -51,7 +55,8 @@ pub fn note_name(note: u8) -> String {
     format!("{}{}", NAMES[usize::from(note % 12)], octave)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Los nombres de las variantes son parte del formato de archivo (`project_file.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ChordKind {
     #[default]
     None,

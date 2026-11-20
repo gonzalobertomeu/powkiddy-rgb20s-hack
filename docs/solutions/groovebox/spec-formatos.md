@@ -1,8 +1,8 @@
 # Groovebox — spec de formatos: proyecto, samples y MIDI
 
-Última revisión: 2026-11-19 · Estado: borrador para revisión del usuario · Volver al [índice](README.md)
+Última revisión: 2026-11-20 (H6: proyecto, guardado atómico y `config.ron` implementados) · Estado: borrador para revisión del usuario · Volver al [índice](README.md)
 
-Decisión base: [ADR 0004 — formato de proyecto en RON](../../decisions/0004-formato-de-proyecto-ron.md) (propuesta).
+Decisión base: [ADR 0004 — formato de proyecto en RON](../../decisions/0004-formato-de-proyecto-ron.md) (aceptada).
 
 ## Carpeta de datos
 
@@ -13,6 +13,13 @@ Todo vive bajo una **raíz de datos** configurable:
 | Consola con segunda microSD | `/roms2/groovebox/` **(sin verificar el punto de montaje de la TF2 en dArkOS)** |
 | Consola con una sola microSD | `/roms/groovebox/` **(sin verificar)** |
 | Mac (desarrollo) | `./data/` dentro de `projects/groovebox/` o `~/.local/share/groovebox/` |
+
+**Implementado (H6):** la raíz es `GROOVEBOX_DATA` si está definida; si no, `$XDG_DATA_HOME/groovebox` y, si tampoco,
+`~/.local/share/groovebox`. Es igual en la Mac y en la consola: con la imagen de Arch Linux ARM la app corre como
+`alarm`, así que queda en `/home/alarm/.local/share/groovebox/` **(sin verificar en la consola)**. Las rutas
+`/roms*` de la tabla eran de dArkOS y no existen en la imagen propia. Sigue abierta la pregunta 1 (¿segunda
+microSD?): si se usa, alcanza con montarla y apuntar `GROOVEBOX_DATA` ahí (por ejemplo desde el launcher).
+Las subcarpetas `samples/`, `instrumentos/`, `exportados/` y `autoguardado.ron` todavía no se crean.
 
 ```
 groovebox/
@@ -111,6 +118,31 @@ groovebox/
 )
 ```
 
+### Implementado (H6)
+
+`src/project_file.rs` (formato, sin I/O) y `src/storage.rs` (carpeta de datos y archivos). Diferencias con el ejemplo:
+
+- **Encabezado `#![enable(implicit_some)]`** (lo escribe `ron`): los `Option` se escriben sin `Some(...)`. Al leer se
+  aceptan las dos formas, y la extensión está activada aunque falte el encabezado.
+- **Filas de la canción como tuplas**: `(0, 1, 2, None, 4, None, 6, 7)`, una por línea (son `[Option<u8>; 8]`).
+- **Instrumentos con los parámetros del motor del H2**, con los nombres de la spec donde existen (`voices`, `level`,
+  `vel_to_amp`, `cutoff`, `resonance`, `amp_env: (a, d, s, r)`, `env_amount`):
+  `DrumSynth((model, voices, level, vel_to_amp, tune, decay, sweep, sweep_time, color, punch, spread))`,
+  `Sampler((voices, level, vel_to_amp))` (el sample llega en H7) y
+  `Subtractive((voices, level, vel_to_amp, wave, amp_env, cutoff, resonance, env_amount, filter_decay))`.
+  Todos los parámetros son opcionales: **el que falta toma el valor por defecto de su modelo** (una caja sin `decay`
+  usa el de la caja, no el del bombo). Así, los parámetros nuevos del H8 se agregan sin subir la versión.
+- `mix` guarda `volume`, `pan`, los envíos y, si están activos, `mute` y `solo`. Todavía no hay `fx` ni `master`.
+- Pasos: `(i, note: On(n) | Off, chord: (kind, inversion), velocity, gate_ticks)`; `chord`, `velocity` (100) y
+  `gate_ticks` (24) se omiten si tienen el valor por defecto. Las entradas de cadena omiten `transpose: 0`.
+- Los campos desconocidos se ignoran (un archivo de una versión más nueva con campos aditivos se abre igual).
+- `name` es informativo: al abrir manda el nombre de la carpeta.
+
+Validación al leer: las entradas de cadena a frases inexistentes se quitan (las siguientes suben), las celdas de la
+canción a cadenas inexistentes se vacían, los pasos con índice ≥ 16 se ignoran y los valores fuera de rango se ajustan
+(nota, inversión, LARGO al valor permitido más cercano, transposición, tempo 40–300, voces 1–8). Faltan pistas: se
+completan con el kit por defecto. Todo eso se avisa en pantalla, con la cantidad de cada caso.
+
 ### Versionado
 
 - `format_version` es un entero que sube **solo con cambios incompatibles**.
@@ -130,6 +162,21 @@ groovebox/
 
 En FAT32 o exFAT el rename no garantiza atomicidad ante un corte de energía **(sin verificar el sistema de archivos de la TF2)**;
 el `.bak` cubre ese caso. Al abrir, si `proyecto.ron` falta o no se puede leer, se ofrece abrir el `.bak`.
+
+**Implementado (H6)** así, con tres agregados:
+
+- Antes de escribir, el texto generado se vuelve a leer: nunca se escribe un archivo que la app no pueda abrir.
+- Si el `proyecto.ron` actual **no se puede leer**, no se renombra a `.bak` (se reemplaza directo): el `.bak` bueno
+  se conserva. Sin esto, guardar después de recuperar desde el `.bak` lo pisaba con el archivo roto.
+- Después de los renombres se hace `fsync` de la carpeta (si el sistema de archivos lo permite).
+
+Abrir desde el `.bak` deja el proyecto marcado con cambios sin guardar, para que GUARDAR rehaga `proyecto.ron`.
+Un archivo con `format_version` mayor que la de la app se abre en solo lectura si se puede interpretar (GUARDAR se
+niega; GUARDAR COMO con otro nombre sí); si no se puede interpretar, se muestra el error. El guardado corre en el hilo
+de interfaz (unos milisegundos para un proyecto típico de decenas de KB; en la SD, el `fsync` puede tardar más
+**(sin medir en la consola)**): la interfaz se congela ese rato, el audio no.
+
+**Autoguardado:** no implementado en el H6.
 
 **Autoguardado (v1):** cada 2 minutos con cambios, a `autoguardado.ron`, por el mismo mecanismo. Al abrir, si el autoguardado es más nuevo que el proyecto, se pregunta cuál usar.
 
@@ -183,6 +230,13 @@ Errores (formato no admitido, archivo corrupto, demasiado largo): se muestra un 
 
 El hito H1 incluye una pantalla de prueba de input para descubrir los índices reales y completar este archivo.
 
+**Implementado (H6):** solo `config_version`, `last_project` y `ui` (`font: Small8x16 | Large12x24`,
+`audition_on_edit`, `follow_playback`, este último activado por defecto). `data_root` no se usa: la raíz se elige con
+`GROOVEBOX_DATA` (el archivo está dentro de la raíz). Los demás campos del ejemplo se leen sin error pero se ignoran,
+y **la app reescribe el archivo solo con los campos que conoce** (al guardar o abrir otro proyecto y al cambiar un
+ajuste): cuando se agreguen `audio` e `input` habrá que conservarlos. `last_project` cambia al guardar, abrir o
+renombrar; al arrancar se abre ese proyecto o, si no hay, uno nuevo.
+
 ## MIDI
 
 ### Transporte
@@ -226,7 +280,7 @@ se genera desde el hilo de audio y se envía por otra cola a un hilo de MIDI **(
 
 ## Fuentes
 
-- [RON (GitHub)](https://github.com/ron-rs/ron), [serde](https://serde.rs/), [hound (GitHub)](https://github.com/ruuda/hound), [midir (GitHub)](https://github.com/Boddlnagg/midir) (crates propuestos; versiones y API a verificar al implementar).
+- [RON (GitHub)](https://github.com/ron-rs/ron) (H6: `ron` 0.12.3; `PrettyConfig::depth_limit`, `Extensions::IMPLICIT_SOME` y `Options::with_default_extension`, verificados contra el código del crate), [serde](https://serde.rs/), [hound (GitHub)](https://github.com/ruuda/hound), [midir (GitHub)](https://github.com/Boddlnagg/midir) (crates propuestos; versiones y API a verificar al implementar).
 - [Especificación MIDI 1.0 (MIDI Association)](https://midi.org/midi-1-0) (mensajes de tiempo real, 24 PPQN).
 - [Linux USB gadget configfs: f_midi (kernel.org)](https://www.kernel.org/doc/html/latest/usb/gadget-testing.html) (MIDI gadget).
 - [ADR 0001 — Rust](../../decisions/0001-lenguaje-rust.md) (crates candidatos).

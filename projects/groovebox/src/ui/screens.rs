@@ -447,52 +447,52 @@ const BUTTON_LABELS: [(Button, &str); 15] = [
     (Button::Fn, "FN"),
 ];
 
-/// Proyecto: ajustes de esta etapa (fuente, audición, salir) y prueba de controles.
+/// Proyecto: archivo (H6), ajustes y, si entra, la prueba de controles y la muestra de fuentes.
 pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
     title(p, app, "")?;
-    let (cw, ch) = (p.cw, p.ch);
+    let ch = p.ch;
+    let cw = p.cw;
     let cursor = cursor_color(view);
     let label_x = 8 + 2 * cw;
     let value_x = 8 + 22 * cw;
+    let lines = 2;
+    let bottom = HEIGHT - footer_height(p, lines) - ch - 2;
     let mut y = title_height(p) + 8;
 
-    let info = [
-        ("nombre", app.project.name.clone()),
-        ("tempo", format!("{:.1} BPM", app.project.tempo_bpm)),
-        ("octava base", format!("{}", app.octave)),
-        ("CPU de audio", load_text(app)),
-    ];
-    for (label, value) in info {
-        p.text(label_x, y, label, theme::DIM)?;
-        p.text(value_x, y, &value, theme::TEXT)?;
-        y += ch;
-    }
-    y += 4;
-    for (i, item) in ProjectItem::ALL.iter().enumerate() {
-        let selected = i == app.project_item;
+    let item_row = |p: &mut Painter, y: i32, item: ProjectItem| -> R {
+        let selected = ProjectItem::ALL[app.project_item] == item;
         let (label, value) = match item {
+            ProjectItem::Name => ("nombre", format!("[{}]", app.project.name)),
+            ProjectItem::Save => ("GUARDAR", String::new()),
+            ProjectItem::SaveAs => ("GUARDAR COMO...", String::new()),
+            ProjectItem::Load => ("CARGAR...", String::new()),
+            ProjectItem::New => ("NUEVO", String::new()),
             ProjectItem::Font => (
                 "fuente",
                 match app.font {
                     FontSize::Small => "8×16",
                     FontSize::Large => "12×24",
-                },
+                }
+                .to_string(),
             ),
             ProjectItem::AuditionOnEdit => (
                 "audición al editar",
-                if app.audition_on_edit { "SÍ" } else { "NO" },
+                if app.audition_on_edit { "SÍ" } else { "NO" }.to_string(),
             ),
-            ProjectItem::Follow => ("seguir reproducción", if app.follow { "SÍ" } else { "NO" }),
-            ProjectItem::Quit => ("SALIR", ""),
+            ProjectItem::Follow => (
+                "seguir reproducción",
+                if app.follow { "SÍ" } else { "NO" }.to_string(),
+            ),
+            ProjectItem::Quit => ("SALIR", String::new()),
         };
         if selected {
             p.fill(0, y, WIDTH, ch, theme::ROW_HI)?;
             p.text(8, y, ">", cursor)?;
         }
-        let label_color = if *item == ProjectItem::Quit {
-            theme::WARN
-        } else {
-            theme::TEXT
+        let label_color = match item {
+            ProjectItem::Quit => theme::WARN,
+            ProjectItem::Name => theme::DIM,
+            _ => theme::TEXT,
         };
         if selected && value.is_empty() {
             p.text_inverted(label_x, y, label, cursor)?;
@@ -500,76 +500,156 @@ pub fn project(p: &mut Painter, app: &App, view: &View) -> R {
             p.text(label_x, y, label, label_color)?;
         }
         if !value.is_empty() {
-            if selected {
-                p.text_inverted(value_x, y, value, cursor)?;
+            let end = if selected {
+                p.text_inverted(value_x, y, &value, cursor)? + 2
             } else {
-                p.text(value_x, y, value, theme::ACCENT)?;
+                p.text(value_x, y, &value, theme::ACCENT)?
+            };
+            if item == ProjectItem::Name {
+                let state = match (app.modified, app.read_only) {
+                    (_, true) => "solo lectura",
+                    (true, false) => "* sin guardar",
+                    (false, false) => "",
+                };
+                let cols = ((WIDTH - end) / cw - 2).max(0) as usize;
+                p.text(end + cw, y, &fit(state, cols), theme::WARN)?;
             }
         }
+        Ok(())
+    };
+
+    item_row(p, y, ProjectItem::Name)?;
+    y += ch;
+    let data = app
+        .data
+        .as_ref()
+        .map_or("(sin carpeta de datos)".to_string(), |d| {
+            home_relative(d.root())
+        });
+    let info = [
+        ("tempo", format!("{:.1} BPM", app.project.tempo_bpm)),
+        ("octava base", format!("{}", app.octave)),
+        ("CPU de audio", load_text(app)),
+        ("datos", data),
+    ];
+    let value_cols = ((WIDTH - value_x) / cw - 1) as usize;
+    for (label, value) in info {
+        p.text(label_x, y, label, theme::DIM)?;
+        p.text(value_x, y, &fit_path(&value, value_cols), theme::TEXT)?;
         y += ch;
+    }
+    let groups: [&[ProjectItem]; 3] = [
+        &[
+            ProjectItem::Save,
+            ProjectItem::SaveAs,
+            ProjectItem::Load,
+            ProjectItem::New,
+        ],
+        &[
+            ProjectItem::Font,
+            ProjectItem::AuditionOnEdit,
+            ProjectItem::Follow,
+        ],
+        &[ProjectItem::Quit],
+    ];
+    for group in groups {
+        y += 6;
+        for &item in group {
+            item_row(p, y, item)?;
+            y += ch;
+        }
     }
 
     // Prueba de controles: sirve para ver el mapeo en la consola. Etiquetas con la fuente chica.
-    y += 8;
-    p.text(8, y, "PRUEBA DE CONTROLES", theme::FAINT)?;
-    y += ch + 4;
+    // Con la fuente grande no entra y se omite.
     let (bw, bh, gap) = (34, 18, 6);
-    for (i, (button, label)) in BUTTON_LABELS.iter().enumerate() {
-        let x = 8 + i as i32 * (bw + gap);
-        let held = view.is_held(*button);
-        if held {
-            p.fill(x, y, bw, bh, theme::ACCENT)?;
-        } else {
-            p.outline(x, y, bw, bh, 1, theme::LINE)?;
-        }
-        let lw = label.chars().count() as i32 * 8;
-        let color = if held { theme::BG } else { theme::DIM };
-        p.text_small(x + (bw - lw) / 2, y + 1, label, color)?;
-    }
-    y += bh + 8;
     let size = 44;
-    for (i, name) in ["stick izq", "stick der"].iter().enumerate() {
-        let x = 8 + i as i32 * 200;
-        let (sx, sy) = view.sticks[i];
-        p.outline(x, y, size, size, 1, theme::LINE)?;
-        p.fill(x + size / 2, y + 2, 1, size - 4, theme::STEP_EMPTY)?;
-        p.fill(x + 2, y + size / 2, size - 4, 1, theme::STEP_EMPTY)?;
-        let dx = x + size / 2 + (sx * (size / 2 - 4) as f32) as i32;
-        let dy = y + size / 2 - (sy * (size / 2 - 4) as f32) as i32;
-        p.fill(dx - 3, dy - 3, 6, 6, theme::ACCENT)?;
-        p.text_small(x + size + 8, y + 4, name, theme::DIM)?;
-        p.text_small(
-            x + size + 8,
-            y + 22,
-            &format!("{sx:+.2} {sy:+.2}"),
-            theme::TEXT,
-        )?;
+    if y + 8 + ch + 4 + bh + 8 + size + 10 <= bottom {
+        y += 8;
+        p.text(8, y, "PRUEBA DE CONTROLES", theme::FAINT)?;
+        y += ch + 4;
+        for (i, (button, label)) in BUTTON_LABELS.iter().enumerate() {
+            let x = 8 + i as i32 * (bw + gap);
+            let held = view.is_held(*button);
+            if held {
+                p.fill(x, y, bw, bh, theme::ACCENT)?;
+            } else {
+                p.outline(x, y, bw, bh, 1, theme::LINE)?;
+            }
+            let lw = label.chars().count() as i32 * 8;
+            let color = if held { theme::BG } else { theme::DIM };
+            p.text_small(x + (bw - lw) / 2, y + 1, label, color)?;
+        }
+        y += bh + 8;
+        for (i, name) in ["stick izq", "stick der"].iter().enumerate() {
+            let x = 8 + i as i32 * 200;
+            let (sx, sy) = view.sticks[i];
+            p.outline(x, y, size, size, 1, theme::LINE)?;
+            p.fill(x + size / 2, y + 2, 1, size - 4, theme::STEP_EMPTY)?;
+            p.fill(x + 2, y + size / 2, size - 4, 1, theme::STEP_EMPTY)?;
+            let dx = x + size / 2 + (sx * (size / 2 - 4) as f32) as i32;
+            let dy = y + size / 2 - (sy * (size / 2 - 4) as f32) as i32;
+            p.fill(dx - 3, dy - 3, 6, 6, theme::ACCENT)?;
+            p.text_small(x + size + 8, y + 4, name, theme::DIM)?;
+            p.text_small(
+                x + size + 8,
+                y + 22,
+                &format!("{sx:+.2} {sy:+.2}"),
+                theme::TEXT,
+            )?;
+        }
+        y += size + 10;
     }
-    y += size + 10;
 
-    // Muestra de las dos fuentes para comparar la legibilidad en la consola.
-    let sample = "BOMBO C#4 may7 vel 100 ¿Sección añadida? 0123456789";
-    p.text_small(8, y, "8×16 ", theme::FAINT)?;
-    p.text_small(8 + 6 * 8, y, sample, theme::TEXT)?;
-    y += 16 + 4;
-    p.fonts.large.draw(p.canvas, 8, y, "12×24", theme::FAINT)?;
-    p.fonts
-        .large
-        .draw(p.canvas, 8 + 6 * 12, y, &fit(sample, 46), theme::TEXT)?;
-    y += 24 + 4;
+    // Muestra de las dos fuentes para comparar la legibilidad en la consola (si entra).
+    if y + 16 + 4 + 24 <= bottom {
+        let sample = "BOMBO C#4 may7 vel 100 ¿Sección añadida? 0123456789";
+        p.text_small(8, y, "8×16 ", theme::FAINT)?;
+        p.text_small(8 + 6 * 8, y, sample, theme::TEXT)?;
+        y += 16 + 4;
+        p.fonts.large.draw(p.canvas, 8, y, "12×24", theme::FAINT)?;
+        p.fonts
+            .large
+            .draw(p.canvas, 8 + 6 * 12, y, &fit(sample, 46), theme::TEXT)?;
+    }
 
-    let lines = 2;
-    debug_assert!(y <= HEIGHT - footer_height(p, lines) - ch);
-    message_line(p, HEIGHT - footer_height(p, lines) - ch - 2, app, view.now)?;
-    footer(
-        p,
-        app.screen,
-        lines,
+    message_line(p, bottom, app, view.now)?;
+    let help: &[&str] = if ProjectItem::ALL[app.project_item].is_action() {
         &[
-            "A cambiar/ejecutar",
+            "A ejecutar",
             "B volver",
             "Sel+abajo volver",
             "Sel+Start(1s) salir",
-        ],
-    )
+        ]
+    } else {
+        &[
+            "A cambiar",
+            "B volver",
+            "Sel+abajo volver",
+            "Sel+Start(1s) salir",
+        ]
+    };
+    footer(p, app.screen, lines, help)
+}
+
+/// La carpeta con `~` en lugar del home, como la escribiría el usuario.
+pub fn home_relative(path: &std::path::Path) -> String {
+    let text = path.display().to_string();
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && text.starts_with(&home) => {
+            format!("~{}", &text[home.len()..])
+        }
+        _ => text,
+    }
+}
+
+/// Recorta una ruta por el principio (lo importante es el final).
+pub fn fit_path(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        s.to_string()
+    } else {
+        let tail: String = s.chars().skip(n + 1 - max).collect();
+        format!("…{tail}")
+    }
 }

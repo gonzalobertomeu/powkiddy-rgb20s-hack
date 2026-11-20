@@ -188,6 +188,8 @@ wait 200
 shot h1-proyecto.bmp
 release r2
 release x
+# El cursor arranca en GUARDAR (H6): bajar hasta "fuente"
+tap down 4
 tap a
 wait 200
 shot h1-proyecto-12x24.bmp

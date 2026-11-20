@@ -1,0 +1,20 @@
+# Recuperación desde el .bak (H6). Después de demo-h6.txt, con la misma carpeta de datos, romper
+# el proyecto guardado y arrancar: la app ofrece abrir proyecto.ron.bak.
+#   echo basura > /tmp/gb-datos/proyectos/beat_01/proyecto.ron
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=0 GROOVEBOX_DATA=/tmp/gb-datos \
+#     GROOVEBOX_SCRIPT=.../demo-h6-bak.txt groovebox
+
+wait 300
+shot h6-bak-dialogo.bmp
+# A: abrir la copia
+tap a
+wait 200
+shot h6-bak-abierto.bmp
+# Proyecto → GUARDAR rehace proyecto.ron
+press select
+tap up
+release select
+tap a
+wait 200
+shot h6-bak-reparado.bmp
+quit

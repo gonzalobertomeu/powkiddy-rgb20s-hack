@@ -44,4 +44,4 @@ guardados, cambiarlo cuesta migraciones. Restricciones: Rust con `serde` ([ADR 0
 
 - [ ] El usuario confirma RON y la copia de samples
 - [ ] Verificar el sistema de archivos y el punto de montaje de la segunda microSD en dArkOS
-- [ ] Verificar la versión del crate `ron` y su soporte de `enum` al implementar
+- [x] Verificar la versión del crate `ron` y su soporte de `enum` al implementar (H6, 2026-11-20: `ron` 0.12.3; los `enum` con datos se escriben y leen como en el ejemplo de la spec)

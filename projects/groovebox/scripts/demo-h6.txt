@@ -1,0 +1,128 @@
+# Demo del H6: guardar, guardar como (editor de nombres), nuevo con cambios sin guardar,
+# cargar desde la lista y salir con cambios sin guardar. Arrancar con una carpeta de datos vacía:
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=0 GROOVEBOX_DATA=/tmp/gb-datos \
+#     GROOVEBOX_SCRIPT=.../demo-h6.txt groovebox
+# Deja en la carpeta de datos: config.ron y proyectos/{proyecto-001,beat_01}/. Después,
+# demo-h6-bak.txt muestra la recuperación desde el .bak.
+
+wait 300
+
+# Un bombo en negras en el proyecto nuevo (proyecto-001)
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+tap right 4
+tap a
+tap down
+tap left 8
+tap a
+tap right 8
+tap a
+
+# Proyecto: "* sin guardar" junto al nombre y en el título
+press select
+tap up
+release select
+wait 200
+shot h6-proyecto-sin-guardar.bmp
+
+# GUARDAR (el cursor arranca ahí)
+tap a
+wait 200
+shot h6-guardado.bmp
+
+# GUARDAR COMO: borrar "proyecto-001" y escribir "beat_01" con A + arriba/abajo
+tap down
+tap a
+press a
+tap b 12
+tap up 2
+release a
+tap right
+press a
+tap up 5
+release a
+tap right
+press a
+tap up
+release a
+tap right
+press a
+tap up 20
+release a
+tap right
+press a
+tap down 2
+release a
+tap right
+press a
+tap up 27
+release a
+tap right
+press a
+tap up 28
+release a
+wait 200
+shot h6-guardar-como.bmp
+tap start
+wait 200
+shot h6-guardado-como.bmp
+
+# La fuente grande también entra (la prueba de controles se omite)
+tap down 3
+tap a
+wait 200
+shot h6-proyecto-12.bmp
+tap a
+tap up 3
+
+# Un cambio en la Grilla y NUEVO: pide confirmación
+press select
+tap down
+release select
+tap right 2
+tap a
+press select
+tap up
+release select
+tap down 2
+tap a
+wait 200
+shot h6-nuevo-confirmar.bmp
+# A: crear sin guardar (más de 300 ms después del A que abrió el diálogo: un doble toque no
+# confirma nada)
+wait 200
+tap a
+wait 200
+shot h6-nuevo.bmp
+
+# CARGAR: lista de proyectos; A abre beat_01
+tap up
+tap a
+wait 200
+shot h6-cargar.bmp
+wait 200
+tap a
+wait 200
+shot h6-cargado.bmp
+press select
+tap down
+release select
+wait 200
+shot h6-cargado-grilla.bmp
+
+# Un cambio y Select + Start mantenido: diálogo de salida; Start guarda y sale
+tap down 2
+tap a
+press select
+press start
+wait 1200
+release start
+release select
+wait 200
+shot h6-salir.bmp
+tap start
+wait 500
+quit

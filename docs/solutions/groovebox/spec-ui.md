@@ -1,6 +1,6 @@
 # Groovebox — spec de interfaz
 
-Última revisión: 2026-11-20 (H5: Canción, Cadena, Start contextual y seguir reproducción implementados) · Estado: borrador para revisión del usuario · Volver al [índice](README.md)
+Última revisión: 2026-11-20 (H6: archivo en Proyecto, navegador de proyectos, editor de nombres y diálogos implementados) · Estado: borrador para revisión del usuario · Volver al [índice](README.md)
 
 Decisiones base: [ADR 0002 — interfaz híbrida grilla + tracker](../../decisions/0002-interfaz-hibrida-grilla-tracker.md) (aceptada) ·
 [ADR 0006 — cadenas por pista](../../decisions/0006-cadenas-por-pista.md) (aceptada) ·
@@ -522,6 +522,23 @@ PROYECTO                                                              beat_01*
 
 "SALIR" y "CARGAR" piden confirmación si hay cambios sin guardar (`*` junto al nombre del proyecto).
 
+**Implementado (H6)**, con estos detalles:
+
+- El cursor arranca en **GUARDAR**. "nombre" es una fila más del cursor: A abre el editor de nombres para
+  **renombrar** (si el proyecto ya está guardado, se renombra su carpeta; no guarda los cambios pendientes).
+  **GUARDAR COMO...** abre el mismo editor y guarda una **copia** con el nombre nuevo, que pasa a ser el proyecto
+  abierto (la carpeta anterior queda como estaba). Si el nombre ya existe, pide confirmación para reemplazarlo (su
+  versión anterior queda en el `.bak`).
+- **NUEVO** también pide confirmación si hay cambios sin guardar (la spec solo lo pide para SALIR y CARGAR). El
+  proyecto nuevo se llama `proyecto-NNN` (el primer número sin carpeta) y se puede renombrar.
+- Junto al nombre: `* sin guardar` o `solo lectura` (archivo de un formato más nuevo que la app). En el título, `*`
+  como en todas las pantallas.
+- Tempo, octava, CPU y la carpeta de datos se muestran como información (tempo y swing todavía no se editan acá:
+  el tempo sigue en Select + L2/R2). Los ajustes (fuente, audición, seguir reproducción) se guardan en `config.ron`.
+- Las acciones se ejecutan con **un toque de A**; un doble toque no las repite. La prueba de controles y la muestra
+  de fuentes se dibujan solo si entran (con la fuente de 12×24 se omiten).
+- Select + Start mantenido 1 s y SALIR pasan por el mismo diálogo. En el simulador, Esc pregunta y un segundo Esc sale.
+
 ### 8. Navegador de archivos (modal)
 
 ```
@@ -553,6 +570,11 @@ CARGAR SAMPLE                      /groovebox/samples/baterias/
 
 El mismo navegador sirve para "Cargar proyecto" (lista carpetas de proyectos) con el título cambiado.
 
+**Implementado (H6) para proyectos:** título "CARGAR PROYECTO" y la carpeta a la derecha; una fila por carpeta de
+`proyectos/` que tenga `proyecto.ron` o `.bak`, por nombre, con la fecha del último guardado (en UTC: la consola no
+tiene zona horaria configurada) y las marcas `(abierto)` y `solo .bak`. ↑/↓ mueven, B + ↑/↓ saltan 10, A o → abren
+(con cambios sin guardar, primero el diálogo), B cancela. No hay subcarpetas ni X (eso llega con los samples, H7).
+
 ### 9. Editor de nombres (modal)
 
 ```
@@ -570,6 +592,11 @@ NOMBRE DEL PROYECTO
 
 Caracteres permitidos: `a–z`, `0–9`, `_` y `-`, hasta 32 (por compatibilidad con FAT; ver [spec-formatos](spec-formatos.md#nombres-de-archivo)).
 
+**Implementado (H6)** como el mockup: el cursor puede estar en el hueco `[ ]` después de la última letra, y ahí A + ↑
+agrega una `a` (A + ↓, un `-`). A + ←/→ también mueven el cursor (para no soltar A), ↑/↓ sin A cambian la letra igual
+que con A, B + ←/→ saltan al principio o al final, A + B borra la letra bajo el cursor (en el hueco, la anterior).
+Start acepta (un nombre vacío no se acepta) y B cancela. Abajo dice dónde va a quedar (`proyectos/<nombre>/`).
+
 ### 10. Diálogo de confirmación (modal)
 
 ```
@@ -580,6 +607,12 @@ Caracteres permitidos: `a–z`, `0–9`, `_` y `-`, hasta 32 (por compatibilidad
               |      A: salir sin guardar      B: cancelar       |
               +--------------------------------------------------+
 ```
+
+**Implementado (H6)** con una opción más: **Start: guardar y salir** (o "y crear el nuevo", "y abrir"); si el
+guardado falla, no se sigue y se ve el error. Las opciones van una por línea para que entren con la fuente de 12×24.
+El mismo recuadro se usa para "¿abrir la copia anterior (`.bak`)?" cuando `proyecto.ron` no se puede leer y para
+"¿reemplazar el proyecto que ya existe?" en GUARDAR COMO. Solo un toque de A confirma: el segundo toque de un doble
+toque (el A que abrió el diálogo y otro en menos de 300 ms) se ignora, así no se descartan cambios por accidente.
 
 ## Modo selección
 

@@ -2,13 +2,16 @@
 //! todo en `u8` 0–127 (spec-motor, "Instrumentos"). El motor los pasa a valores físicos al
 //! recibirlos (`engine::drum::DrumSetup`, `engine::synth::SynthSetup`), nunca por muestra.
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::TrackKind;
 
 pub const MAX_VOICES: u8 = 8;
 /// Nota en la que la percusión suena con su afinación nominal (C-4).
 pub const DRUM_ROOT_NOTE: u8 = 60;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Los nombres de las variantes de `DrumModel` y `Wave` son parte del formato de archivo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DrumModel {
     Kick,
     Snare,
@@ -73,15 +76,11 @@ impl DrumParams {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// `Square` y `Sine` solo llegan desde un archivo hasta la pantalla Instrumento (H8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Wave {
     Saw,
-    #[expect(dead_code, reason = "se elige en la pantalla Instrumento (H8)")]
     Square,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "se elige en la pantalla Instrumento (H8)")
-    )]
     Sine,
 }
 

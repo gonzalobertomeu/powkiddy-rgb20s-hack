@@ -1,6 +1,7 @@
 //! Dibujo de las pantallas con primitivas de SDL2 y la fuente bitmap. Lee el estado de `App`
 //! y no lo modifica.
 
+mod files;
 mod font;
 mod grid;
 mod phrase;
@@ -231,11 +232,7 @@ pub fn status_parts(app: &App) -> Vec<String> {
     let state = if app.transport.is_some() { ">" } else { "■" };
     let mut parts = vec![
         format!("{state} {:.1} BPM", app.project.tempo_bpm),
-        format!(
-            "{}{}",
-            app.project.name,
-            if app.modified { "*" } else { "" }
-        ),
+        app.project_label(),
         format!("oct {}", app.octave),
     ];
     if let Some(load) = &app.audio_load {
@@ -398,6 +395,10 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
         cw,
         ch,
     };
+    // El editor de nombres y el navegador ocupan toda la pantalla; el diálogo va encima.
+    if files::draw_full(&mut p, app, view)? {
+        return Ok(());
+    }
     match app.screen {
         Screen::Grid => grid::draw(&mut p, app, view)?,
         Screen::Phrase => phrase::draw(&mut p, app, view)?,
@@ -406,7 +407,9 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
         Screen::Project => screens::project(&mut p, app, view)?,
         Screen::Instrument | Screen::Mix => screens::pending(&mut p, app, view)?,
     }
-    if view.is_held(Button::Select) {
+    if app.modal.is_some() {
+        files::confirm(&mut p, app)?;
+    } else if view.is_held(Button::Select) {
         minimap_overlay(&mut p, app.screen)?;
     }
     Ok(())

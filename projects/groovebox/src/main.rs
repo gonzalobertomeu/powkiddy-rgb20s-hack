@@ -1,6 +1,6 @@
 //! Groovebox para la Powkiddy RGB20S. Hitos H1 (input, fuente, Grilla y Frase), H2 (motor),
-//! H3 (secuenciador: loop de la sección) y H5 (cadenas y canción: modos de reproducción,
-//! pantallas Canción y Cadena, seguir reproducción).
+//! H3 (secuenciador: loop de la sección), H5 (cadenas y canción: modos de reproducción,
+//! pantallas Canción y Cadena, seguir reproducción) y H6 (guardar y abrir proyectos en RON).
 //!
 //! Subcomandos sin ventana ni audio (ver `offline.rs`):
 //! - `groovebox render [carpeta]`: renderiza demos a WAV (la canción y el beat salen del secuenciador).
@@ -15,6 +15,8 @@
 //! - `GROOVEBOX_REPEAT=delay,intervalo`: repetición de la cruz en ms (defecto 250,33).
 //! - `GROOVEBOX_AUDIO=0`: sin audio; `=null`: motor al ritmo real pero sin dispositivo.
 //! - `GROOVEBOX_DEMO=1`: arrancar con el proyecto de demostración (`demo.rs`).
+//! - `GROOVEBOX_DATA`: carpeta de datos (defecto `$XDG_DATA_HOME/groovebox` o
+//!   `~/.local/share/groovebox`): `config.ron` y `proyectos/<nombre>/proyecto.ron`.
 //! - `GROOVEBOX_SCRIPT=archivo`: guion de input y capturas (ver `script.rs`).
 
 #[cfg(test)]
@@ -26,9 +28,12 @@ mod engine;
 mod gestures;
 mod input;
 mod instrument;
+mod modal;
 mod model;
 mod offline;
+mod project_file;
 mod script;
+mod storage;
 mod sync;
 mod ui;
 
@@ -260,13 +265,21 @@ fn run() -> Result<(), Box<dyn Error>> {
         None => None,
     };
 
-    let project = if config.demo {
+    let data = storage::DataDir::from_env();
+    println!("datos: {}", data.root().display());
+    let app_config = data.load_config().unwrap_or_else(|e| {
+        println!("datos: config.ron ilegible ({e}); uso la configuración por defecto");
+        storage::AppConfig::default()
+    });
+    let mut app = App::new(Project::new_default());
+    app.attach_data(data, app_config);
+    if config.demo {
         println!("proyecto: demo (GROOVEBOX_DEMO=1)");
-        demo::project()
+        app.project = demo::project();
     } else {
-        Project::new_default()
-    };
-    let mut app = App::new(project);
+        app.open_last_or_new();
+        println!("proyecto: {}", app.project.name);
+    }
     if config.large_font {
         app.font = FontSize::Large;
     }
@@ -311,11 +324,20 @@ fn run() -> Result<(), Box<dyn Error>> {
         for event in first.into_iter().chain(events.poll_iter()) {
             match event {
                 Event::Quit { .. } => app.quit = true,
-                // Atajo del simulador: Esc sale (en la consola es FN, que la app no usa).
+                // Atajo del simulador: Esc sale (en la consola es FN, que la app no usa). Con
+                // cambios sin guardar pregunta; un segundo Esc sale igual.
                 Event::KeyDown {
                     keycode: Some(Keycode::Escape),
+                    repeat: false,
                     ..
-                } if config.sim => app.quit = true,
+                } if config.sim => {
+                    if app.confirming_quit() {
+                        app.quit = true;
+                    } else {
+                        app.request_quit();
+                    }
+                    dirty = true;
+                }
                 Event::KeyDown {
                     keycode: Some(key),
                     repeat: false,

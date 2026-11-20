@@ -1,12 +1,17 @@
 //! Estado de la interfaz y edición del proyecto a partir de gestos. Sin SDL ni audio:
-//! `handle` devuelve, como mucho, una audición para mandarle al motor.
+//! `handle` devuelve, como mucho, una audición para mandarle al motor. Guardar y abrir
+//! proyectos (H6) escribe y lee la carpeta de datos (`storage`) desde este hilo.
 
 use crate::engine::{HeadPos, LoadReport, PlayMode, Playhead};
 use crate::gestures::{Dir, Gesture};
+use crate::modal::{BROWSER_PAGE, Browser, Confirm, Modal, NameEditor, NamePurpose, Then};
 use crate::model::{
     CHAIN_LEN, ChainId, Chord, DEFAULT_GATE, DEFAULT_VELOCITY, EditError, MAX_SONG_ROWS, NOTE_MAX,
-    NOTE_MIN, NoteCell, NoteSet, PHRASE_STEPS, PhraseId, Project, Section, Step, TRACKS,
-    TRANSPOSE_MAX, TrackKind, gate_nudge,
+    NOTE_MIN, NoteCell, NoteSet, PHRASE_STEPS, PhraseId, Project, Section, Step, TEMPO_MAX,
+    TEMPO_MIN, TRACKS, TRANSPOSE_MAX, TrackKind, gate_nudge,
+};
+use crate::storage::{
+    AppConfig, DataDir, FontChoice, LoadError, PROJECT_FILE, PROJECTS_DIR, valid_name,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,6 +108,11 @@ pub enum FontSize {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProjectItem {
+    Name,
+    Save,
+    SaveAs,
+    Load,
+    New,
     Font,
     AuditionOnEdit,
     Follow,
@@ -110,12 +120,34 @@ pub enum ProjectItem {
 }
 
 impl ProjectItem {
-    pub const ALL: [ProjectItem; 4] = [
+    pub const ALL: [ProjectItem; 9] = [
+        ProjectItem::Name,
+        ProjectItem::Save,
+        ProjectItem::SaveAs,
+        ProjectItem::Load,
+        ProjectItem::New,
         ProjectItem::Font,
         ProjectItem::AuditionOnEdit,
         ProjectItem::Follow,
         ProjectItem::Quit,
     ];
+
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&i| i == self).unwrap_or(0)
+    }
+
+    /// Acciones (se ejecutan con A; A + cruz no hace nada).
+    pub fn is_action(self) -> bool {
+        matches!(
+            self,
+            ProjectItem::Name
+                | ProjectItem::Save
+                | ProjectItem::SaveAs
+                | ProjectItem::Load
+                | ProjectItem::New
+                | ProjectItem::Quit
+        )
+    }
 }
 
 /// Últimos valores usados en una pista: lo que pone A en un paso vacío.
@@ -145,7 +177,6 @@ pub struct Message {
 
 pub const MESSAGE_MS: u64 = 3000;
 const DEFAULT_OCTAVE: u8 = 4;
-const TEMPO_RANGE: (f32, f32) = (40.0, 300.0);
 
 pub struct App {
     pub project: Project,
@@ -174,6 +205,13 @@ pub struct App {
     /// Última posición de los cabezales que publicó el motor (se actualiza con `set_playhead`).
     pub playhead: Playhead,
     pub modified: bool,
+    /// El archivo abierto es de un formato más nuevo: GUARDAR no lo sobrescribe.
+    pub read_only: bool,
+    /// Carpeta de datos (None en los tests que no usan archivos).
+    pub data: Option<DataDir>,
+    pub config: AppConfig,
+    /// Navegador, editor de nombres o diálogo abierto: recibe todos los gestos.
+    pub modal: Option<Modal>,
     pub message: Option<Message>,
     pub quit: bool,
     now: u64,
@@ -223,7 +261,7 @@ impl App {
             phrase_row: 0,
             phrase_col: PhraseCol::Note,
             chain_col: ChainCol::Phrase,
-            project_item: 0,
+            project_item: ProjectItem::Save.index(),
             memory: [memory; TRACKS],
             octave: DEFAULT_OCTAVE,
             last_phrase: None,
@@ -235,6 +273,10 @@ impl App {
             transport: None,
             playhead: Playhead::default(),
             modified: false,
+            read_only: false,
+            data: None,
+            config: AppConfig::default(),
+            modal: None,
             message: None,
             quit: false,
             now: 0,
@@ -373,13 +415,17 @@ impl App {
     }
 
     fn dispatch(&mut self, g: Gesture, just_inserted: bool) -> Option<Audition> {
+        if let Some(modal) = self.modal.take() {
+            self.handle_modal(modal, g);
+            return None;
+        }
         match g {
             Gesture::Screen(dir) => {
                 self.navigate(dir);
                 None
             }
             Gesture::Quit => {
-                self.quit = true;
+                self.request_quit();
                 None
             }
             Gesture::Mute | Gesture::Solo => {
@@ -406,8 +452,8 @@ impl App {
                 None
             }
             Gesture::Tempo(d) => {
-                let (lo, hi) = TEMPO_RANGE;
-                self.project.tempo_bpm = (self.project.tempo_bpm + d as f32).clamp(lo, hi);
+                self.project.tempo_bpm =
+                    (self.project.tempo_bpm + d as f32).clamp(TEMPO_MIN, TEMPO_MAX);
                 self.modified = true;
                 None
             }
@@ -1095,6 +1141,9 @@ impl App {
             Gesture::Jump(Dir::Up) => self.project_item = 0,
             Gesture::Jump(Dir::Down) => self.project_item = last,
             Gesture::Cancel => self.go(self.origin),
+            Gesture::Insert if ProjectItem::ALL[self.project_item].is_action() => {
+                self.project_action(ProjectItem::ALL[self.project_item]);
+            }
             Gesture::Insert | Gesture::InsertNew | Gesture::Edit { .. } => {
                 match ProjectItem::ALL[self.project_item] {
                     ProjectItem::Font => {
@@ -1105,12 +1154,10 @@ impl App {
                     }
                     ProjectItem::AuditionOnEdit => self.audition_on_edit = !self.audition_on_edit,
                     ProjectItem::Follow => self.follow = !self.follow,
-                    ProjectItem::Quit => {
-                        if matches!(g, Gesture::Insert) {
-                            self.quit = true;
-                        }
-                    }
+                    // Las acciones van solo con un toque de A (un doble toque no las repite).
+                    _ => return None,
                 }
+                self.store_settings();
             }
             Gesture::Listen => return self.listen(None),
             _ => {}
@@ -1135,6 +1182,369 @@ impl App {
                 None
             }
             _ => None,
+        }
+    }
+}
+
+/// Archivos (H6): guardar, abrir, nuevo, renombrar y salir con cambios sin guardar.
+impl App {
+    /// Conecta la carpeta de datos y aplica los ajustes de `config.ron`.
+    pub fn attach_data(&mut self, data: DataDir, config: AppConfig) {
+        self.font = match config.ui.font {
+            FontChoice::Small8x16 => FontSize::Small,
+            FontChoice::Large12x24 => FontSize::Large,
+        };
+        self.audition_on_edit = config.ui.audition_on_edit;
+        self.follow = config.ui.follow_playback;
+        self.config = config;
+        self.data = Some(data);
+    }
+
+    /// Al arrancar: el último proyecto usado o uno nuevo (spec-producto, F7).
+    pub fn open_last_or_new(&mut self) {
+        self.new_project();
+        if let Some(name) = self.config.last_project.clone() {
+            self.open(&name, false);
+        }
+    }
+
+    /// Nombre a mostrar del proyecto con la marca de cambios sin guardar.
+    pub fn project_label(&self) -> String {
+        format!(
+            "{}{}",
+            self.project.name,
+            if self.modified { "*" } else { "" }
+        )
+    }
+
+    /// Está abierto el diálogo "Hay cambios sin guardar... ¿Salir igual?".
+    pub fn confirming_quit(&self) -> bool {
+        matches!(
+            self.modal,
+            Some(Modal::Confirm(Confirm::Unsaved(Then::Quit)))
+        )
+    }
+
+    pub fn request_quit(&mut self) {
+        if self.modified {
+            self.modal = Some(Modal::Confirm(Confirm::Unsaved(Then::Quit)));
+        } else {
+            self.quit = true;
+        }
+    }
+
+    fn project_action(&mut self, item: ProjectItem) {
+        match item {
+            ProjectItem::Name => {
+                self.modal = Some(Modal::Name(NameEditor::new(
+                    NamePurpose::Rename,
+                    &self.project.name,
+                )));
+            }
+            ProjectItem::Save => {
+                self.save();
+            }
+            ProjectItem::SaveAs => {
+                self.modal = Some(Modal::Name(NameEditor::new(
+                    NamePurpose::SaveAs,
+                    &self.project.name,
+                )));
+            }
+            ProjectItem::Load => self.open_browser(),
+            ProjectItem::New => self.unless_unsaved(Then::New),
+            ProjectItem::Quit => self.request_quit(),
+            ProjectItem::Font | ProjectItem::AuditionOnEdit | ProjectItem::Follow => {}
+        }
+    }
+
+    /// Hace `then` o, si hay cambios sin guardar, pregunta primero (spec-ui 10).
+    fn unless_unsaved(&mut self, then: Then) {
+        if self.modified {
+            self.modal = Some(Modal::Confirm(Confirm::Unsaved(then)));
+        } else {
+            self.run(then);
+        }
+    }
+
+    fn run(&mut self, then: Then) {
+        match then {
+            Then::Quit => self.quit = true,
+            Then::New => {
+                self.new_project();
+                self.info(format!("proyecto nuevo: {}", self.project.name));
+            }
+            Then::Load(name) => self.open(&name, false),
+        }
+    }
+
+    fn open_browser(&mut self) {
+        let Some(data) = &self.data else {
+            self.warn("no hay carpeta de datos");
+            return;
+        };
+        match data.list() {
+            Ok(entries) => {
+                self.modal = Some(Modal::Browser(Browser::new(entries, &self.project.name)));
+            }
+            Err(e) => self.warn(e),
+        }
+    }
+
+    /// Cambia el proyecto en memoria y deja la vista en el principio. Para el transporte: el
+    /// motor recibe el proyecto nuevo por diferencias (`EngineMirror`).
+    fn replace_project(&mut self, project: Project, read_only: bool) {
+        self.project = project;
+        self.read_only = read_only;
+        self.modified = false;
+        self.transport = None;
+        self.section = Section::default();
+        self.grid_col = GridCol::Step(0);
+        self.phrase_row = 0;
+        self.last_phrase = None;
+        self.last_chain = None;
+    }
+
+    fn new_project(&mut self) {
+        let mut project = Project::new_default();
+        if let Some(data) = &self.data {
+            project.name = data.free_name();
+        }
+        self.replace_project(project, false);
+    }
+
+    /// Abre `proyectos/<name>/`. Si `proyecto.ron` no se puede leer y hay `.bak`, lo ofrece.
+    fn open(&mut self, name: &str, from_backup: bool) {
+        let Some(data) = &self.data else {
+            self.warn("no hay carpeta de datos");
+            return;
+        };
+        match data.load(name, from_backup) {
+            Ok(loaded) => {
+                self.replace_project(loaded.project, loaded.newer);
+                self.remember_last_project();
+                let mut notes = Vec::new();
+                if from_backup {
+                    // Así GUARDAR rehace proyecto.ron con lo que se recuperó.
+                    self.modified = true;
+                    notes.push(
+                        "abierto desde la copia .bak: GUARDAR repara proyecto.ron".to_string(),
+                    );
+                }
+                if loaded.newer {
+                    notes.push(
+                        "formato más nuevo que esta app: solo lectura (usá GUARDAR COMO)"
+                            .to_string(),
+                    );
+                }
+                notes.extend(loaded.warnings);
+                if notes.is_empty() {
+                    self.info(format!("proyecto {name} abierto"));
+                } else {
+                    self.warn(format!("{name}: {}", notes.join("; ")));
+                }
+            }
+            Err(LoadError::Missing) => self.warn(format!("no existe el proyecto {name}")),
+            Err(LoadError::Broken {
+                reason,
+                backup: true,
+            }) => {
+                self.modal = Some(Modal::Confirm(Confirm::OpenBackup {
+                    name: name.to_string(),
+                    reason,
+                }));
+            }
+            Err(e) => self.warn(format!("no pude abrir {name}: {e}")),
+        }
+    }
+
+    /// GUARDAR. Devuelve si se guardó.
+    pub fn save(&mut self) -> bool {
+        let Some(data) = &self.data else {
+            self.warn("no hay carpeta de datos");
+            return false;
+        };
+        if self.read_only {
+            self.warn("archivo de un formato más nuevo: guardalo con GUARDAR COMO y otro nombre");
+            return false;
+        }
+        match data.save(&self.project) {
+            Ok(_) => {
+                self.modified = false;
+                let text = format!(
+                    "guardado en {PROJECTS_DIR}/{}/{PROJECT_FILE}",
+                    self.project.name
+                );
+                self.remember_last_project();
+                self.info(text);
+                true
+            }
+            Err(e) => {
+                self.warn(e);
+                false
+            }
+        }
+    }
+
+    fn save_as(&mut self, name: String, overwrite: bool) {
+        let Some(data) = &self.data else {
+            self.warn("no hay carpeta de datos");
+            return;
+        };
+        if name == self.project.name {
+            self.save();
+            return;
+        }
+        if data.exists(&name) && !overwrite {
+            self.modal = Some(Modal::Confirm(Confirm::Overwrite { name }));
+            return;
+        }
+        let old = std::mem::replace(&mut self.project.name, name);
+        let read_only = std::mem::replace(&mut self.read_only, false);
+        if !self.save() {
+            self.project.name = old;
+            self.read_only = read_only;
+        }
+    }
+
+    fn rename(&mut self, name: String) {
+        let Some(data) = &self.data else {
+            self.warn("no hay carpeta de datos");
+            return;
+        };
+        if name == self.project.name {
+            return;
+        }
+        match data.rename(&self.project.name, &name) {
+            Ok(()) => {
+                if self.config.last_project.as_deref() == Some(self.project.name.as_str()) {
+                    self.config.last_project = Some(name.clone());
+                    self.store_config();
+                }
+                self.info(format!("{} ahora se llama {name}", self.project.name));
+                self.project.name = name;
+            }
+            Err(e) => self.warn(e),
+        }
+    }
+
+    fn remember_last_project(&mut self) {
+        if self.config.last_project.as_deref() != Some(self.project.name.as_str()) {
+            self.config.last_project = Some(self.project.name.clone());
+            self.store_config();
+        }
+    }
+
+    fn store_settings(&mut self) {
+        self.config.ui.font = match self.font {
+            FontSize::Small => FontChoice::Small8x16,
+            FontSize::Large => FontChoice::Large12x24,
+        };
+        self.config.ui.audition_on_edit = self.audition_on_edit;
+        self.config.ui.follow_playback = self.follow;
+        self.store_config();
+    }
+
+    fn store_config(&mut self) {
+        if let Some(data) = &self.data
+            && let Err(e) = data.save_config(&self.config)
+        {
+            self.warn(e);
+        }
+    }
+
+    /// Los modales reciben todos los gestos: Select + cruz, los gatillos y Start (salvo para
+    /// aceptar) no hacen nada mientras están abiertos (spec-ui, "Modos").
+    fn handle_modal(&mut self, modal: Modal, g: Gesture) {
+        if g == Gesture::Quit {
+            self.modal = Some(modal);
+            if !self.confirming_quit() {
+                self.modal = None;
+                self.request_quit();
+            }
+            return;
+        }
+        let keep = match modal {
+            Modal::Name(editor) => self.handle_name_editor(editor, g),
+            Modal::Browser(browser) => self.handle_browser(browser, g),
+            Modal::Confirm(confirm) => self.handle_confirm(confirm, g),
+        };
+        if keep.is_some() {
+            // Un modal que abre otro (por ejemplo, Reemplazar) gana sobre el que cierra.
+            self.modal = self.modal.take().or(keep);
+        }
+    }
+
+    fn handle_name_editor(&mut self, mut e: NameEditor, g: Gesture) -> Option<Modal> {
+        match g {
+            Gesture::Move(Dir::Left) | Gesture::Edit { dir: Dir::Left, .. } => e.move_by(-1),
+            Gesture::Move(Dir::Right)
+            | Gesture::Edit {
+                dir: Dir::Right, ..
+            } => e.move_by(1),
+            Gesture::Move(Dir::Up) | Gesture::Edit { dir: Dir::Up, .. } => e.cycle(1),
+            Gesture::Move(Dir::Down) | Gesture::Edit { dir: Dir::Down, .. } => e.cycle(-1),
+            Gesture::Jump(Dir::Left) => e.jump(false),
+            Gesture::Jump(Dir::Right) => e.jump(true),
+            Gesture::Delete => e.delete(),
+            Gesture::Cancel => return None,
+            Gesture::Play => {
+                let name = e.name();
+                if !valid_name(&name) {
+                    self.warn("el nombre no puede estar vacío");
+                } else {
+                    match e.purpose {
+                        NamePurpose::SaveAs => self.save_as(name, false),
+                        NamePurpose::Rename => self.rename(name),
+                    }
+                    return None;
+                }
+            }
+            _ => {}
+        }
+        Some(Modal::Name(e))
+    }
+
+    fn handle_browser(&mut self, mut b: Browser, g: Gesture) -> Option<Modal> {
+        match g {
+            Gesture::Move(Dir::Up) => b.move_by(-1),
+            Gesture::Move(Dir::Down) => b.move_by(1),
+            Gesture::Jump(Dir::Up) => b.move_by(-(BROWSER_PAGE as i32)),
+            Gesture::Jump(Dir::Down) => b.move_by(BROWSER_PAGE as i32),
+            Gesture::Insert | Gesture::Move(Dir::Right) => {
+                if let Some(entry) = b.selected() {
+                    let name = entry.name.clone();
+                    self.unless_unsaved(Then::Load(name));
+                    return None;
+                }
+            }
+            Gesture::Cancel => return None,
+            _ => {}
+        }
+        Some(Modal::Browser(b))
+    }
+
+    fn handle_confirm(&mut self, c: Confirm, g: Gesture) -> Option<Modal> {
+        match (g, c) {
+            (Gesture::Cancel, _) => None,
+            (Gesture::Play, Confirm::Unsaved(then)) => {
+                if self.save() {
+                    self.run(then);
+                }
+                None
+            }
+            (Gesture::Insert, Confirm::Unsaved(then)) => {
+                self.run(then);
+                None
+            }
+            (Gesture::Insert, Confirm::OpenBackup { name, .. }) => {
+                self.open(&name, true);
+                None
+            }
+            (Gesture::Insert, Confirm::Overwrite { name }) => {
+                self.save_as(name, true);
+                None
+            }
+            (_, c) => Some(Modal::Confirm(c)),
         }
     }
 }
@@ -1423,6 +1833,8 @@ mod tests {
     fn project_screen_font_toggle_and_quit() {
         let mut a = app();
         a.handle(Gesture::Screen(Dir::Up), 0);
+        assert_eq!(ProjectItem::ALL[a.project_item], ProjectItem::Save);
+        a.project_item = ProjectItem::Font.index();
         a.handle(Gesture::Insert, 0);
         assert_eq!(a.font, FontSize::Large);
         a.handle(edit(Dir::Right), 0);
@@ -1554,7 +1966,7 @@ mod tests {
     fn follow_is_a_project_setting() {
         let mut a = app();
         a.handle(Gesture::Screen(Dir::Up), 0);
-        a.project_item = 2;
+        a.project_item = ProjectItem::Follow.index();
         a.handle(Gesture::Insert, 0);
         assert!(!a.follow);
     }
@@ -1723,7 +2135,10 @@ mod tests {
         a.handle(Gesture::Tempo(1), 0);
         assert_eq!(a.project.tempo_bpm, 121.0);
         a.handle(Gesture::Quit, 0);
-        assert!(a.quit);
+        assert!(!a.quit, "con cambios sin guardar, pregunta");
+        assert!(a.confirming_quit());
+        a.handle(Gesture::Insert, 0);
+        assert!(a.quit, "A: salir sin guardar");
     }
 
     #[test]
@@ -1732,5 +2147,264 @@ mod tests {
         let aud = a.handle(Gesture::Listen, 0).unwrap();
         assert_eq!(aud.notes.as_slice(), &[60]);
         assert!(step(&a, 0, 0).is_empty());
+    }
+
+    // --- Archivos (H6) ---
+
+    use crate::storage::test_dir::TempDir;
+    use crate::storage::{BACKUP_FILE, CONFIG_FILE};
+
+    fn app_with_data(tmp: &TempDir) -> App {
+        let mut a = App::new(Project::new_default());
+        let data = DataDir::new(tmp.path());
+        let config = data.load_config().unwrap();
+        a.attach_data(data, config);
+        a.open_last_or_new();
+        a
+    }
+
+    fn on_project_item(a: &mut App, item: ProjectItem) {
+        if a.screen != Screen::Project {
+            a.handle(Gesture::Screen(Dir::Up), 0);
+        }
+        a.project_item = item.index();
+    }
+
+    fn data(a: &App) -> &DataDir {
+        a.data.as_ref().unwrap()
+    }
+
+    #[test]
+    fn save_marks_clean_and_reopens_at_start() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        assert_eq!(a.project.name, "proyecto-001");
+        assert!(!a.modified);
+        a.handle(Gesture::Insert, 0);
+        assert!(a.modified);
+        assert_eq!(a.project_label(), "proyecto-001*");
+
+        on_project_item(&mut a, ProjectItem::Save);
+        a.handle(Gesture::Insert, 0);
+        assert!(!a.modified, "{:?}", a.message);
+        assert!(
+            tmp.path()
+                .join("proyectos/proyecto-001/proyecto.ron")
+                .is_file()
+        );
+        assert!(tmp.path().join(CONFIG_FILE).is_file());
+
+        // Al arrancar de nuevo se abre el último proyecto, con la nota puesta.
+        let b = app_with_data(&tmp);
+        assert_eq!(b.project, a.project);
+        assert_eq!(b.config.last_project.as_deref(), Some("proyecto-001"));
+        assert_eq!(
+            b.project.step(0, Section::default(), 0).unwrap().note,
+            NoteCell::On(60)
+        );
+    }
+
+    #[test]
+    fn new_and_load_ask_when_there_are_unsaved_changes() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        a.handle(Gesture::Insert, 0);
+        on_project_item(&mut a, ProjectItem::Save);
+        a.handle(Gesture::Insert, 0);
+        let saved = a.project.clone();
+
+        // Sin cambios, NUEVO no pregunta.
+        on_project_item(&mut a, ProjectItem::New);
+        a.handle(Gesture::Insert, 0);
+        assert!(a.modal.is_none());
+        assert_eq!(a.project.name, "proyecto-002");
+        a.handle(Gesture::Tempo(1), 0);
+
+        // Con cambios: B cancela, A crea sin guardar.
+        a.handle(Gesture::Insert, 0);
+        assert!(matches!(
+            a.modal,
+            Some(Modal::Confirm(Confirm::Unsaved(Then::New)))
+        ));
+        a.handle(Gesture::Cancel, 0);
+        assert!(a.modal.is_none());
+        assert_eq!(a.project.tempo_bpm, 121.0);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Insert, 0);
+        assert_eq!(a.project.tempo_bpm, 120.0);
+        assert!(!data(&a).exists("proyecto-002"), "no se guardó");
+
+        // CARGAR: el navegador lista lo guardado; con cambios, Start guarda y abre.
+        a.handle(Gesture::Tempo(-1), 0);
+        on_project_item(&mut a, ProjectItem::Load);
+        a.handle(Gesture::Insert, 0);
+        let Some(Modal::Browser(b)) = &a.modal else {
+            panic!("tendría que abrir el navegador");
+        };
+        assert_eq!(b.entries.len(), 1);
+        // Los gestos globales no hacen nada con un modal abierto.
+        a.handle(Gesture::Screen(Dir::Down), 0);
+        a.handle(Gesture::Play, 0);
+        assert_eq!(a.screen, Screen::Project);
+        assert!(a.transport.is_none());
+        a.handle(Gesture::Insert, 0);
+        assert!(matches!(
+            a.modal,
+            Some(Modal::Confirm(Confirm::Unsaved(Then::Load(_))))
+        ));
+        a.handle(Gesture::Play, 0);
+        assert!(a.modal.is_none());
+        assert_eq!(a.project, saved);
+        assert!(!a.modified);
+        assert_eq!(
+            data(&a)
+                .load("proyecto-002", false)
+                .unwrap()
+                .project
+                .tempo_bpm,
+            119.0
+        );
+    }
+
+    #[test]
+    fn save_as_types_a_name_and_asks_before_replacing() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        on_project_item(&mut a, ProjectItem::SaveAs);
+        a.handle(Gesture::Insert, 0);
+        // Borra "proyecto-001" (12 letras) y escribe "b".
+        for _ in 0..12 {
+            a.handle(Gesture::Delete, 0);
+        }
+        a.handle(Gesture::Play, 0);
+        assert!(matches!(a.modal, Some(Modal::Name(_))), "vacío: no acepta");
+        a.handle(edit(Dir::Up), 0);
+        a.handle(edit(Dir::Up), 0);
+        a.handle(Gesture::Play, 0);
+        assert!(a.modal.is_none());
+        assert_eq!(a.project.name, "b");
+        assert!(data(&a).exists("b"));
+        assert_eq!(a.config.last_project.as_deref(), Some("b"));
+
+        // Guardar como "b" otro proyecto: pregunta y, con A, reemplaza (lo anterior queda en .bak).
+        a.handle(Gesture::Tempo(5), 0);
+        a.project.name = "c".to_string();
+        on_project_item(&mut a, ProjectItem::SaveAs);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Delete, 0);
+        a.handle(edit(Dir::Up), 0);
+        a.handle(edit(Dir::Up), 0);
+        a.handle(Gesture::Play, 0);
+        assert!(matches!(
+            a.modal,
+            Some(Modal::Confirm(Confirm::Overwrite { .. }))
+        ));
+        assert_eq!(a.project.name, "c");
+        a.handle(Gesture::Insert, 0);
+        assert_eq!(a.project.name, "b");
+        assert_eq!(data(&a).load("b", false).unwrap().project.tempo_bpm, 125.0);
+        assert!(tmp.path().join("proyectos/b").join(BACKUP_FILE).is_file());
+    }
+
+    #[test]
+    fn rename_moves_the_folder() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        on_project_item(&mut a, ProjectItem::Save);
+        a.handle(Gesture::Insert, 0);
+        on_project_item(&mut a, ProjectItem::Name);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Move(Dir::Up), 0);
+        a.handle(Gesture::Play, 0);
+        assert_eq!(a.project.name, "proyecto-001a");
+        assert!(data(&a).exists("proyecto-001a"));
+        assert!(!data(&a).exists("proyecto-001"));
+        assert_eq!(a.config.last_project.as_deref(), Some("proyecto-001a"));
+        assert!(!a.modified);
+    }
+
+    #[test]
+    fn unreadable_project_offers_the_backup_at_start() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        on_project_item(&mut a, ProjectItem::Save);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Tempo(10), 0);
+        a.handle(Gesture::Insert, 0);
+        let main = tmp.path().join("proyectos/proyecto-001/proyecto.ron");
+        std::fs::write(&main, "(format_version: 1, tempo_bpm: ").unwrap();
+
+        let mut b = app_with_data(&tmp);
+        assert!(matches!(
+            b.modal,
+            Some(Modal::Confirm(Confirm::OpenBackup { .. }))
+        ));
+        assert_eq!(b.project.name, "proyecto-002", "mientras tanto, uno nuevo");
+        b.handle(Gesture::Insert, 0);
+        assert!(b.modal.is_none());
+        assert_eq!(b.project.name, "proyecto-001");
+        assert_eq!(b.project.tempo_bpm, 120.0, "la versión del .bak");
+        assert!(b.modified, "GUARDAR repara proyecto.ron");
+        assert!(b.message.as_ref().unwrap().warn);
+        b.handle(Gesture::Screen(Dir::Up), 0);
+        b.project_item = ProjectItem::Save.index();
+        b.handle(Gesture::Insert, 0);
+        assert!(data(&b).load("proyecto-001", false).is_ok());
+    }
+
+    #[test]
+    fn newer_format_is_read_only() {
+        let tmp = TempDir::new();
+        let dir = tmp.path().join("proyectos/futuro");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(PROJECT_FILE), "(format_version: 7)").unwrap();
+        std::fs::write(tmp.path().join(CONFIG_FILE), "(last_project: \"futuro\")").unwrap();
+        let mut a = app_with_data(&tmp);
+        assert_eq!(a.project.name, "futuro");
+        assert!(a.read_only);
+        on_project_item(&mut a, ProjectItem::Save);
+        a.handle(Gesture::Insert, 0);
+        assert!(a.message.as_ref().unwrap().warn);
+        assert_eq!(
+            std::fs::read_to_string(dir.join(PROJECT_FILE)).unwrap(),
+            "(format_version: 7)"
+        );
+        on_project_item(&mut a, ProjectItem::SaveAs);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Move(Dir::Up), 0);
+        a.handle(Gesture::Play, 0);
+        assert_eq!(a.project.name, "futuroa");
+        assert!(!a.read_only);
+    }
+
+    #[test]
+    fn quit_with_changes_can_save_first() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        a.handle(Gesture::Insert, 0);
+        a.handle(Gesture::Quit, 0);
+        assert!(a.confirming_quit());
+        a.handle(Gesture::Quit, 0);
+        assert!(
+            a.confirming_quit(),
+            "mantener de nuevo no cierra el diálogo"
+        );
+        a.handle(Gesture::Play, 0);
+        assert!(a.quit);
+        assert!(data(&a).load("proyecto-001", false).is_ok());
+    }
+
+    #[test]
+    fn settings_go_to_the_config() {
+        let tmp = TempDir::new();
+        let mut a = app_with_data(&tmp);
+        on_project_item(&mut a, ProjectItem::Font);
+        a.handle(Gesture::Insert, 0);
+        on_project_item(&mut a, ProjectItem::Follow);
+        a.handle(Gesture::Insert, 0);
+        assert!(!a.modified, "los ajustes no son del proyecto");
+        let b = app_with_data(&tmp);
+        assert_eq!(b.font, FontSize::Large);
+        assert!(!b.follow);
     }
 }

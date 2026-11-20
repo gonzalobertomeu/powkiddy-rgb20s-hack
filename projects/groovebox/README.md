@@ -2,7 +2,8 @@
 
 Groovebox para la Powkiddy RGB20S. Diseño y hitos en [docs/solutions/groovebox](../../docs/solutions/groovebox/README.md).
 
-Estado: **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
+Estado: **H6** (guardar y abrir proyectos en RON: con esto se cumple el objetivo mínimo del MVP, "un beat de 4
+compases guardado") sobre **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
 frase, Start contextual, pantallas Canción y Cadena editables, seguir reproducción) sobre **H3** (secuenciador, edición
 en vivo, cabezales), **H2** (motor de sonido: bolsa de voces, percusión sintetizada, sinte, medición de CPU) y **H1**
 (input, fuente bitmap, Grilla y Frase editables). Probado en la Mac (nativo y sin escritorio) y emulado (aarch64); **sin probar en la consola**. Diseño del
@@ -59,8 +60,12 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
 - **Creación implícita**: poner una nota donde la pista no tiene frase crea la fila de la canción, la cadena y/o
   la frase que falten (solo en la primera entrada libre de la cadena; si hay un hueco, avisa).
 - **Instrumento** y **Mezcla**: pendientes.
-- **Proyecto**: fuente (8×16 / 12×24), audición al editar, seguir reproducción, SALIR, una **prueba de controles** (botones apretados
-  y posición de los sticks) y una muestra de texto en los dos tamaños para comparar la legibilidad.
+- **Proyecto (H6)**: nombre (renombrar), **GUARDAR**, **GUARDAR COMO...**, **CARGAR...** y **NUEVO**; los ajustes
+  (fuente 8×16 / 12×24, audición al editar, seguir reproducción), SALIR, la carpeta de datos y, si entran (con la
+  fuente chica), una **prueba de controles** (botones apretados y posición de los sticks) y una muestra de texto en
+  los dos tamaños. Detalle abajo, en "Proyectos y carpeta de datos".
+- **Cambios sin guardar**: `*` junto al nombre en el título de todas las pantallas y `* sin guardar` en Proyecto.
+  NUEVO, CARGAR y salir (SALIR o Select + Start mantenido) preguntan antes de descartarlos.
 - **Audición**: X hace sonar el paso (o el instrumento con la última nota) con el instrumento real de la pista; poner y
   editar notas también suena. Los acordes disparan varias voces; el largo (LARGO) se respeta al tempo actual (INF = 16 pasos).
 - **Motor (H2)**: bolsa de 16 voces + 4 de fundido con las reglas de robo del ADR 0007; kit por defecto: BOMBO, CAJA,
@@ -84,11 +89,24 @@ Según el [mapa global de spec-ui](../../docs/solutions/groovebox/spec-ui.md#map
 | Y | Selección (H10) | Clonar la frase (en FRA, FRASE o la Frase) o la cadena (en la Canción) | — | Solo de la pista |
 | L1 / R1 | Pista − / + | Acorde − / + (no en percusión) | — | Octava base − / + |
 | L2 / R2 | Grilla: sección − / + (pasa a la fila siguiente; incluye una sección y una fila nuevas). Canción: 16 filas. Cadena: fila. Frase: entrada de la cadena | — | — | Tempo − / + |
-| Start | Reproducir / parar según la pantalla (canción, cadena o frase) | — | — | Loop de la sección / parar. **Mantener 1 s: salir** |
+| Start | Reproducir / parar según la pantalla (canción, cadena o frase) | — | — | Loop de la sección / parar. **Mantener 1 s: salir** (con cambios sin guardar, pregunta) |
 
 En la Frase, sobre ACORDE: A + ←/→ cambia el tipo y A + ↑/↓ la inversión; sobre LARGO, A + ←/→ recorre
 1/4, 1/2, 3/4, 1…16 e INF. A + B en ACORDE, VEL o LARGO vuelve al valor por defecto; en NOTA borra el paso.
 Mientras se mantiene Select, el minimapa se agranda.
+
+### Proyecto y modales (H6)
+
+| Dónde | Controles |
+|---|---|
+| Proyecto | ↑/↓ elegir; **A** ejecuta (GUARDAR, GUARDAR COMO..., CARGAR..., NUEVO, SALIR; sobre "nombre", renombrar) o cambia un ajuste (A + cruz también); B o Select + ↓ vuelven |
+| Editor de nombres | ←/→ mover (también con A apretado); **A + ↑/↓** cambiar la letra (también ↑/↓ solos); en el hueco del final, agregar; B + ←/→ principio o final; **A + B** borrar; **Start** aceptar; B cancelar |
+| Cargar proyecto | ↑/↓ mover; B + ↑/↓ de a 10; **A** (o →) abrir; B cancelar |
+| Diálogo de cambios sin guardar | **Start** guardar y seguir; **A** seguir sin guardar; **B** cancelar |
+| Diálogo del `.bak` / de reemplazar | **A** abrir la copia / reemplazar; **B** cancelar |
+
+Con un modal abierto, Select + cruz, los gatillos, Start (salvo para aceptar) y X no hacen nada. En los diálogos solo
+confirma un toque de A separado: el segundo toque de un doble toque se ignora.
 
 ### Teclado del simulador
 
@@ -101,7 +119,7 @@ Mapeo de [`infra/sim/keymap.toml`](../../infra/sim/keymap.toml) (si falta `RGB20
 | L1 / R1 | `Q` / `W` |
 | L2 / R2 | `1` / `2` |
 | Select / Start | `Shift` derecho / `Enter` |
-| FN (no se usa) | `Esc` (en el simulador, Esc sale) |
+| FN (no se usa) | `Esc` (en el simulador, Esc sale; con cambios sin guardar pregunta y un segundo Esc sale igual) |
 | Stick izquierdo | `I` `J` `K` `L` |
 | Stick derecho | `8` `4` `2` `6` del teclado numérico |
 
@@ -129,11 +147,70 @@ copiar `fonts/LICENSE-spleen` junto al binario al empaquetar (`just deploy-sd` y
 Cambio de tamaño: Proyecto → fuente (A), o `GROOVEBOX_FONT=12` al arrancar. Con 12×24 la Grilla muestra solo los
 números de tiempo (1, 5, 9, 13) y el del cursor, y la Frase pierde las columnas de v1 y las líneas de ayuda.
 
+## Proyectos y carpeta de datos
+
+```
+<datos>/
+  config.ron                    último proyecto abierto y ajustes de Proyecto
+  proyectos/<nombre>/
+    proyecto.ron                el proyecto (RON, formato 1)
+    proyecto.ron.bak            la versión anterior
+```
+
+- `<datos>` = `GROOVEBOX_DATA`, o `$XDG_DATA_HOME/groovebox`, o `~/.local/share/groovebox`. En la consola, con la
+  imagen de Arch, `/home/alarm/.local/share/groovebox/` **(sin verificar)**. La app lo escribe en el log al arrancar
+  (`datos: ...`) y lo muestra en Proyecto.
+- Al arrancar se abre el último proyecto (`last_project` de `config.ron`) o, si no hay, uno nuevo `proyecto-NNN`.
+  `GROOVEBOX_DEMO=1` sigue abriendo la demo (se puede guardar: queda en `proyectos/demo/`).
+- **Guardado atómico**: `proyecto.ron.tmp` + `fsync`, el `proyecto.ron` anterior pasa a `.bak` y el `.tmp` a
+  `proyecto.ron`. Si `proyecto.ron` no se puede leer y hay `.bak`, la app ofrece abrir la copia; abierta, queda con
+  cambios sin guardar y GUARDAR repara `proyecto.ron` (sin pisar el `.bak` bueno con el roto).
+- Un archivo de un formato más nuevo se abre en **solo lectura** (GUARDAR se niega; GUARDAR COMO con otro nombre sí).
+- Los errores de lectura y escritura se ven en la línea de mensajes (y, si hubo cosas corregidas al leer, cuántas).
+  Todo corre en el hilo de interfaz: el audio no hace E/S.
+- Formato: [spec-formatos](../../docs/solutions/groovebox/spec-formatos.md#implementado-h6). Ejemplo abreviado:
+
+```ron
+// groovebox: archivo de proyecto (formato en docs/solutions/groovebox/spec-formatos.md)
+#![enable(implicit_some)]
+(
+    format_version: 1,
+    app_version: "0.1.0",
+    name: "beat_01",
+    tempo_bpm: 120.0,
+    swing: 50,
+    tracks: [
+        (
+            name: "BOMBO",
+            instrument: DrumSynth((model: Kick, voices: 1, level: 110, vel_to_amp: 127, tune: 64, decay: 84, sweep: 76, sweep_time: 51, color: 64, punch: 50, spread: 48)),
+            mix: (volume: 100, pan: 0, delay_send: 0, reverb_send: 0),
+        ),
+        // ... las otras 7 pistas ...
+    ],
+    song: [
+        (0, 1, 2, 3, 4, 5, 6, 7),
+    ],
+    chains: {
+        0: [
+            (phrase: 0),
+        ],
+        // ...
+    },
+    phrases: {
+        0: [
+            (i: 0, note: On(60)),
+            (i: 4, note: On(60)),
+        ],
+        // ...
+    },
+)
+```
+
 ## Uso
 
 ```sh
 just run          # nativo en la Mac (simulador)
-just test         # tests (modelo, edición, gestos, fuente, guion, motor, secuenciador)
+just test         # tests (modelo, edición, gestos, fuente, guion, motor, secuenciador, archivos)
 just build-arm    # binario aarch64
 just check-arm    # glibc y librerías requeridas
 just run-arm      # aarch64 emulado (sin pantalla ni audio)
@@ -155,6 +232,7 @@ just run-arm bench 5         # lo mismo emulado: solo para comparar, no es el n�
 | `GROOVEBOX_AUDIO=0` | sin audio |
 | `GROOVEBOX_AUDIO=null` | el motor corre en un hilo propio al ritmo real, sin dispositivo ni salida (probar sin placa de sonido: cabezales, carga, log) |
 | `GROOVEBOX_DEMO=1` | arrancar con el proyecto de demostración (canción de 3 filas con batería, bajo y acordes) |
+| `GROOVEBOX_DATA=carpeta` | carpeta de datos (proyectos y `config.ron`); para probar sin tocar la real |
 | `GROOVEBOX_FRAMES` | período de audio pedido (defecto 256; para medir 128/512 en la consola) |
 | `GROOVEBOX_SCRIPT=archivo` | guion de input y capturas (abajo) |
 
@@ -184,6 +262,23 @@ Canción parada y con el aviso de la fila 2, Start en la Canción, una cadena nu
 Grilla siguiendo la reproducción (fila 1 y la desalineación de la fila 2), la Cadena del SINTE con su cabezal, la
 transposición editada y el loop de la cadena, y la opción en Proyecto (10 capturas).
 
+[`scripts/demo-h6.txt`](scripts/demo-h6.txt) arranca con una carpeta de datos vacía: arma un bombo, Proyecto con
+`* sin guardar`, GUARDAR, GUARDAR COMO con el editor de nombres (escribe `beat_01`), Proyecto con la fuente grande,
+NUEVO con el diálogo de cambios sin guardar, CARGAR con la lista, la Grilla del proyecto abierto y el diálogo de
+salida (Start guarda y sale): 11 capturas. [`scripts/demo-h6-bak.txt`](scripts/demo-h6-bak.txt), después de romper
+`proyecto.ron`, muestra el diálogo del `.bak`, el proyecto recuperado y GUARDAR reparándolo (3 capturas):
+
+```sh
+export SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=0 GROOVEBOX_DATA=/tmp/gb-datos
+GROOVEBOX_SCRIPT=scripts/demo-h6.txt target/debug/groovebox
+echo basura > /tmp/gb-datos/proyectos/beat_01/proyecto.ron
+GROOVEBOX_SCRIPT=scripts/demo-h6-bak.txt target/debug/groovebox
+```
+
+Los guiones que pasan por Proyecto escriben `config.ron` en la carpeta de datos: conviene usar `GROOVEBOX_DATA`.
+Con `just run-arm` (QEMU), `GROOVEBOX_DATA` tiene que estar dentro de `RUN_ARM_OUT` para poder escribirse; las
+capturas salen iguales a las nativas salvo la ruta de datos, las fechas y algún mensaje que vence antes por la lentitud.
+
 El proyecto demo (`src/demo.rs`) es una canción de 3 filas: **A** (4 compases: Am7 F G E, la batería con relleno en el
 4), **B** (2 compases: las frases de A transpuestas por la cadena a Dm7 y Em7) y **C** (4 compases: la progresión
 +3). En la fila 2 los hi-hats cerrados tienen una cadena de 3 frases y las palmas de 2: la fila sale marcada con `!`
@@ -203,9 +298,12 @@ Los dos salen idénticos byte a byte con el binario nativo y con el aarch64 emul
 | `src/input.rs` | `enum Button`, keymap (TOML, botones y sticks), gamepad, sticks con zona muerta, gatillos analógicos |
 | `src/gestures.rs` | Botones → gestos: modificadores A/B/Select, A + B, doble toque, repetición, Select + Start mantenido. Sin SDL |
 | `src/model.rs` | Proyecto: canción → cadenas → frases → pasos (IDs `u8`), acordes, largos, creación implícita. Sin SDL |
-| `src/app.rs` | Estado de la interfaz y edición a partir de gestos. Sin SDL |
+| `src/app.rs` | Estado de la interfaz y edición a partir de gestos; archivo (guardar, abrir, nuevo, renombrar, salir) y modales. Sin SDL |
+| `src/project_file.rs` | Formato de archivo (`ProjectFile` disperso, versión, conversión y validación hacia `Project`). Sin I/O |
+| `src/storage.rs` | Carpeta de datos, guardado atómico con `.bak`, lista de proyectos, `config.ron` |
+| `src/modal.rs` | Editor de nombres, navegador de proyectos y diálogos (estado y edición) |
 | `src/script.rs` | Guion de input |
-| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`) |
+| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), modales de archivo (`files.rs`) |
 | `src/audio.rs` | Salida con cpal (48 kHz f32 preferido) o backend nulo; `Processor`: lo que corre en el callback (comandos, render, conversión, medición, eventos de carga y cabezales) |
 | `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó |
 | `src/demo.rs` | Proyecto de demostración (render, bench y `GROOVEBOX_DEMO=1`) |
@@ -225,7 +323,7 @@ Los dos salen idénticos byte a byte con el binario nativo y con el aarch64 emul
 
 ## Dependencias
 
-H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan dependencias.
+H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan dependencias. H6 agrega `ron`.
 
 | Crate | Por qué |
 |---|---|
@@ -234,8 +332,17 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan depen
 | `rtrb 0.3` | Colas SPSC sin locks: comandos interfaz → motor y eventos motor → interfaz |
 | `hound 3.5` | Escribir WAV (render offline) |
 | `serde 1` + `toml 1` | Leer `infra/sim/keymap.toml` (luego, la config de botones) |
+| `ron 0.12` | Proyecto y `config.ron` en RON ([ADR 0004](../../docs/decisions/0004-formato-de-proyecto-ron.md)); trae `bitflags`, `typeid` y `unicode-ident` |
 
 ## Desvíos respecto de la spec
+
+- **Archivo (H6)**: NUEVO también pide confirmación con cambios sin guardar; el diálogo suma **Start: guardar y
+  seguir**; "nombre" renombra (mueve la carpeta) y GUARDAR COMO guarda una copia; en el editor de nombres ↑/↓ sin A
+  también cambian la letra; el navegador muestra las fechas en UTC. Tempo y swing no se editan en Proyecto todavía.
+  Detalle en [spec-ui](../../docs/solutions/groovebox/spec-ui.md#7-proyecto).
+- **Formato (H6)**: filas de la canción como tuplas, `implicit_some`, instrumentos con los parámetros del motor actual
+  y parámetros opcionales con el valor por defecto de su modelo; un `proyecto.ron` ilegible no se rota a `.bak`.
+  Detalle en [spec-formatos](../../docs/solutions/groovebox/spec-formatos.md#implementado-h6). Sin autoguardado.
 
 - **Salir**: la spec no define una combinación para salir (Select + Start es "loop de la sección"). Se usa
   **Select + Start mantenido 1 s**; un toque corto sigue siendo el loop (H3). También Proyecto → SALIR.
@@ -278,6 +385,10 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3 y H5 no agregan depen
   sin cortes en seco cuando varias pistas polifónicas cambian de acorde a la vez.
 
 ## Pendientes para la consola (device-ops)
+
+- H6: guardar, salir, volver a abrir la app (debe abrir el último proyecto) y apagar la consola de golpe justo después
+  de guardar, para ver que `proyecto.ron` o el `.bak` sobreviven. Ver cuánto tarda GUARDAR en la SD (la interfaz se
+  congela ese rato) y que la carpeta de datos quede en `/home/alarm/.local/share/groovebox/` con el launcher.
 
 - `groovebox bench` con el binario de `just build-arm` (y la frecuencia de la CPU durante la medición), y la CPU real que
   muestra la app al tocar. Escenarios del H3 y H5: "secuenciador: proyecto demo", "secuenciador: canción demo (modo
