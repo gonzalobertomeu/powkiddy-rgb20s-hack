@@ -46,6 +46,9 @@ const EXIT_NO_CHOICE: u8 = 3;
 /// Espera máxima sin eventos: alcanza para refrescar la batería.
 const IDLE_WAIT_MS: u64 = 1_000;
 const BATTERY_REFRESH_MS: u64 = 15_000;
+/// Cuadros extra después de cada cambio (ver `flush` en el bucle) y espera entre ellos.
+const FLUSH_FRAMES: u32 = 2;
+const FLUSH_WAIT_MS: u64 = 16;
 
 struct Args {
     choice_file: Option<PathBuf>,
@@ -292,6 +295,9 @@ fn run(
     let mut battery = battery::read(&config.power_supply);
     let mut battery_at = 0;
     let mut dirty = true;
+    // Con KMSDRM, SDL muestra cada cuadro recién en el `present` siguiente: después de cada
+    // cambio se dibujan FLUSH_FRAMES cuadros más para que el último estado llegue a la pantalla.
+    let mut flush = 0u32;
     // Botones de `LAUNCHER_INPUT`: se procesan como toques en la primera vuelta.
     let mut presses = config.input.clone();
     let mut injected = !presses.is_empty();
@@ -303,7 +309,11 @@ fn run(
             .deadline()
             .unwrap_or(u64::MAX)
             .min(battery_at + BATTERY_REFRESH_MS);
-        let wait = deadline.saturating_sub(now).clamp(1, IDLE_WAIT_MS);
+        let wait = if flush > 0 {
+            FLUSH_WAIT_MS
+        } else {
+            deadline.saturating_sub(now).clamp(1, IDLE_WAIT_MS)
+        };
         let first = events.wait_event_timeout(wait as u32);
 
         for event in first.into_iter().chain(events.poll_iter()) {
@@ -397,7 +407,12 @@ fn run(
             battery = fresh;
         }
 
-        if dirty {
+        if dirty || flush > 0 {
+            if dirty {
+                flush = FLUSH_FRAMES;
+            } else {
+                flush -= 1;
+            }
             let screen = ui::Screen {
                 apps,
                 entries,
