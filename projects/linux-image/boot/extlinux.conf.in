@@ -1,11 +1,13 @@
 # extlinux.conf de la imagen Arch Linux ARM para la RGB20S.
 # Se edita desde la Mac montando la partición FAT (etiqueta RGB20S_BOOT).
 # Cuidado: el parser de U-Boot es estricto. Nada de espacios al final de las líneas FDT/LINUX.
-# Para probar la otra entrada, cambiar DEFAULT (no hay menú: la consola no muestra U-Boot).
+# Para probar otra entrada, cambiar DEFAULT (no hay menú: la consola no muestra U-Boot).
 #
 # Entradas:
-#   arch          DTB propio (gadget USB por defecto). Arranque normal.
+#   arch          DTB propio (gadget USB por defecto), arranque silencioso con splash. Normal.
+#   arch-verbose  Igual, pero con todos los mensajes del kernel y de systemd en pantalla (sin logo).
 #   arch-rocknix  DTB de ROCKNIX sin cambios (USB en modo host). Por si el propio no arranca.
+# install-on-device.sh (projects/linux-image/splash/) agrega "arch-prev": el kernel anterior.
 
 DEFAULT arch
 
@@ -13,6 +15,11 @@ LABEL arch
   LINUX /Image
   FDT /dtbs/rockchip/rk3326-powkiddy-rgb20s-alarm.dtb
   APPEND @CMDLINE@
+
+LABEL arch-verbose
+  LINUX /Image
+  FDT /dtbs/rockchip/rk3326-powkiddy-rgb20s-alarm.dtb
+  APPEND @CMDLINE_VERBOSE@
 
 LABEL arch-rocknix
   LINUX /Image

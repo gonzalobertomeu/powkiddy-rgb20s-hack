@@ -73,10 +73,12 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
   - [0012 — Acceso por USB gadget NCM + ACM con IP fija y DHCP](docs/decisions/0012-acceso-por-usb-gadget-ncm-acm.md) (aceptada)
   - [0013 — Tantas ranuras de fundido como voces en la bolsa](docs/decisions/0013-ranuras-de-fundido.md) (aceptada)
   - [0014 — Arrancar en un launcher propio en tty1, con un wrapper de sesión](docs/decisions/0014-sesion-launcher-en-tty1.md) (propuesta)
+  - [0015 — Splash de arranque: logo propio en el kernel y un puente DRM en userspace](docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (propuesta)
 - [Entorno de desarrollo: justfile, compilación cruzada, simulador y deploy](infra/README.md)
 - [Proyectos](projects/README.md)
   - [launcher: menú al prender la consola](projects/launcher/README.md)
   - [linux-image: imagen de Arch Linux ARM](projects/linux-image/README.md)
+    - [splash de arranque "KingaGroove"](projects/linux-image/splash/README.md)
 
 ## Convenciones
 

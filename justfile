@@ -136,7 +136,11 @@ img-fetch what="all":
 img-uboot:
     "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-uboot.sh
 
-# Compila el kernel, los DTB de la RGB20S y el módulo del joypad
+# Splash de arranque: arte (make-splash.py) y binario rgb20s-splash (projects/linux-image/splash/)
+img-splash:
+    "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-splash.sh
+
+# Compila el kernel (con el logo de arranque), los DTB de la RGB20S y el módulo del joypad
 img-kernel:
     "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-kernel.sh
 
@@ -148,8 +152,13 @@ img-rootfs:
 img-assemble:
     "{{infra}}/image/scripts/in-builder.sh" --root bash infra/image/scripts/build-image.sh
 
-# Todo: fuentes, U-Boot, kernel, rootfs e imagen
-img: img-fetch img-uboot img-kernel img-rootfs img-assemble
+# Todo: fuentes, U-Boot, splash, kernel, rootfs e imagen
+img: img-fetch img-uboot img-splash img-kernel img-rootfs img-assemble
+
+# Paquete para actualizar una consola en uso sin reflashear (kernel, módulos, extlinux, splash):
+# infra/build/out/device-update/ + install-on-device.sh. Requiere img-splash e img-kernel.
+img-device-update:
+    "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-device-update.sh
 
 # Revisa la imagen sin hardware: offsets del bootloader, particiones, FAT y ext4
 img-check:

@@ -1,0 +1,4 @@
+# Derivados grandes que regenera make-splash.py (just img-splash / just img-kernel).
+# splash.png (referencia) sí va al repo.
+generated/*.ppm
+generated/*.tmp

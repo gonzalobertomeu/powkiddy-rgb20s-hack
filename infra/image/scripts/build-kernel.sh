@@ -37,6 +37,13 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3326-powkiddy-rgb20s.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3326-powkiddy-rgb20s-alarm.dtb
 EOF
 
+# 2b. Logo de arranque (splash): se genera con make-splash.py y se copia solo si cambió, para no
+#     forzar el relinkeo del kernel en cada build (Kconfig: CONFIG_LOGO_LINUX_CLUT224_FILE).
+python3 -I projects/linux-image/splash/make-splash.py --only kernel
+logo_src=projects/linux-image/splash/generated/logo_rgb20s_clut224.ppm
+logo_dst="$src/drivers/video/logo/logo_rgb20s_clut224.ppm"
+cmp -s "$logo_src" "$logo_dst" || cp "$logo_src" "$logo_dst"
+
 # 3. Config: base de ROCKNIX + fragmento propio
 cp "$li/rocknix/linux.aarch64.conf" "$src/.config"
 ( cd "$src" && ./scripts/kconfig/merge_config.sh -m .config "/work/$li/config.fragment" >/dev/null \
@@ -77,5 +84,8 @@ cp "$src/arch/arm64/boot/Image" "$src/System.map" "$out/"
 cp "$src/.config" "$out/config"
 cp "$dts_dir"/rk3326-powkiddy-rgb20s*.dtb "$out/dtbs/rockchip/"
 echo "$krel" > "$out/kernel.release"
+# Verificación del logo: config y símbolo en el binario
+grep -qx 'CONFIG_LOGO_LINUX_CLUT224=y' "$out/config" && grep -q ' logo_linux_clut224$' "$out/System.map" \
+  || { echo "el logo propio no quedó en el kernel" >&2; exit 1; }
 log "listo: $krel"
 ls -la "$out" "$out/dtbs/rockchip"

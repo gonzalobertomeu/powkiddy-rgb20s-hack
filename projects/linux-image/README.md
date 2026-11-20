@@ -7,8 +7,10 @@ RGB20S, rootfs adelgazada y acceso de desarrollo por el USB-C (red + serie) haci
 - Decisiones: ADR [0009](../../docs/decisions/0009-arranque-uboot-miniloader-rkbin.md),
   [0010](../../docs/decisions/0010-kernel-mainline-con-dts-y-drivers-de-rocknix.md),
   [0011](../../docs/decisions/0011-rootfs-alarm-con-systemd.md),
-  [0012](../../docs/decisions/0012-acceso-por-usb-gadget-ncm-acm.md) (todas **propuestas**)
-- Estado: la imagen se arma completa en la Mac; **nunca se arrancó en la consola**.
+  [0012](../../docs/decisions/0012-acceso-por-usb-gadget-ncm-acm.md),
+  [0015](../../docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (splash, propuesta)
+- Estado: la imagen arranca en la consola (2026-11-20). El splash de arranque ([`splash/`](splash/README.md)) está
+  armado y probado en QEMU, **sin probar en la consola**.
 
 Acá está **qué lleva la imagen**; **cómo se construye** está en [`infra/image/`](../../infra/image/).
 
@@ -20,10 +22,12 @@ Todo corre en contenedores: sin `sudo`, sin loop devices y sin tocar ninguna SD.
 just image-builder        # contenedor rgb20s-image-builder (una vez, ~3 min)
 # (opcional) clave pública para entrar por SSH sin contraseña; no se commitea:
 mkdir -p infra/image/local && cp ~/.ssh/id_ed25519.pub infra/image/local/authorized_keys
-just img                  # fetch + U-Boot + kernel + rootfs + imagen
+just img                  # fetch + U-Boot + splash + kernel + rootfs + imagen
 ```
 
-O por pasos: `just img-fetch`, `just img-uboot`, `just img-kernel`, `just img-rootfs`, `just img-assemble`, `just img-check`.
+O por pasos: `just img-fetch`, `just img-uboot`, `just img-splash`, `just img-kernel`, `just img-rootfs`, `just img-assemble`, `just img-check`.
+Para actualizar una consola en uso sin reflashear (kernel, módulos, `extlinux.conf`, splash): `just img-device-update` y
+[`splash/README.md`](splash/README.md#instalar-en-la-consola-en-uso-sin-reflashear).
 El overlay y los módulos se copian en `img-assemble`: cambiarlos no obliga a repetir `img-rootfs`.
 Resultado: `infra/build/out/rgb20s-arch.img` y su `.sha256`.
 
@@ -31,6 +35,7 @@ Resultado: `infra/build/out/rgb20s-arch.img` y su `.sha256`.
 |---|---|---|
 | `img-fetch` | host (curl, gpg) | ~4 min (≈1 GB) |
 | `img-uboot` | `rgb20s-image-builder` | ~1,5 min |
+| `img-splash` | `rgb20s-image-builder` | segundos |
 | `img-kernel` | `rgb20s-image-builder` | ~23 min limpio (6 hilos, en paralelo con la rootfs); incremental, segundos |
 | `img-rootfs` | contenedor arm64 de ALARM, emulado | ~13 min (incluye `pacman -Syu`) |
 | `img-assemble` | `rgb20s-image-builder` como root del contenedor | ~10 s |
@@ -54,12 +59,15 @@ uboot/
   rocknix/            defconfig, DT y parche de U-Boot de ROCKNIX; b_boot.ini de referencia
   boot.cmd            -> boot.scr: llama a sysboot sobre extlinux.conf
 boot/
-  extlinux.conf.in    entradas "arch" (DTB propio) y "arch-rocknix" (DTB de ROCKNIX)
+  boot.env            identificadores de disco y línea de comandos del kernel (normal y verbose)
+  extlinux.conf.in    entradas "arch" (splash), "arch-verbose" (todos los mensajes) y "arch-rocknix" (DTB de ROCKNIX)
   rgb20s.conf         configuración editable desde la Mac
 rootfs/
   customize.sh        personalización de ALARM (corre en el contenedor arm64)
   packages.txt        paquetes que se agregan
   overlay/            archivos que se copian a la rootfs (servicios rgb20s-*, red, SSH, journald)
+splash/               splash de arranque: arte (make-splash.py), logo del kernel, rgb20s-splash (DRM),
+                      instalación y rollback en una consola en uso
 ```
 
 ## Usar la imagen

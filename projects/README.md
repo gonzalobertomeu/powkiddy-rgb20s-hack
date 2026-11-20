@@ -15,5 +15,5 @@ projects/<nombre>/
 | Proyecto | Solución | Estado |
 |---|---|---|
 | [groovebox](groovebox/README.md) | [Groovebox](../docs/solutions/groovebox/README.md) | H6 (guardar y abrir proyectos en RON); el H5 corre en la consola (KMSDRM, ALSA, gamepad), el H6 sin probar ahí |
-| [linux-image](linux-image/README.md) | [Arch Linux ARM](../docs/firmware/arch-linux-arm.md) | Arranca en la consola: SSH y red por USB gadget |
+| [linux-image](linux-image/README.md) | [Arch Linux ARM](../docs/firmware/arch-linux-arm.md) | Arranca en la consola: SSH y red por USB gadget. [Splash de arranque](linux-image/splash/README.md): sin probar en la consola |
 | [launcher](launcher/README.md) | Menú de arranque ([ADR 0014](../docs/decisions/0014-sesion-launcher-en-tty1.md)) | Instalado en la consola: arranca solo en tty1 y abre el groovebox |

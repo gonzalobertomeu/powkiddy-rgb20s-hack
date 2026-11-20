@@ -38,3 +38,15 @@ CONFIG_DEVTMPFS_MOUNT=y
 CONFIG_IKCONFIG=y
 CONFIG_IKCONFIG_PROC=y
 CONFIG_PSTORE=y
+
+# Splash de arranque (ADR 0015): logo propio de 224 colores en vez del pingüino.
+# El PPM lo genera projects/linux-image/splash/make-splash.py; build-kernel.sh lo copia al árbol.
+# fbcon solo lo dibuja si se registra antes del final del init del kernel (late_initcall_sync).
+CONFIG_LOGO=y
+# CONFIG_LOGO_LINUX_MONO is not set
+# CONFIG_LOGO_LINUX_VGA16 is not set
+CONFIG_LOGO_LINUX_CLUT224=y
+CONFIG_LOGO_LINUX_CLUT224_FILE="drivers/video/logo/logo_rgb20s_clut224.ppm"
+# fbcon no dibuja el logo si el loglevel de consola es <= este valor. Con 3 y loglevel=4 en la
+# línea de comandos (boot/boot.env) se ve el logo y, en pantalla, solo los errores.
+CONFIG_CONSOLE_LOGLEVEL_QUIET=3

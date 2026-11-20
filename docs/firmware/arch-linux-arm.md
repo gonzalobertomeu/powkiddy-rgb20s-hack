@@ -1,9 +1,9 @@
 # Arch Linux ARM en la RGB20S: cadena de arranque, kernel, rootfs e imagen
 
-Última revisión: 2026-11-19 (fase 1: imagen armada, **nunca arrancada en la consola**)
+Última revisión: 2026-11-20 (la imagen ya corre en la consola; se agregó el splash de arranque, sin probar en la consola)
 
 Todo lo de este documento sale de fuentes (ROCKNIX, U-Boot, kernel, rkbin, Arch Linux ARM) y de builds en la Mac.
-Nada se probó en la consola: los datos de hardware son **(sin verificar)** salvo que se diga otra cosa.
+La imagen ya arranca en la consola (2026-11-20, medido por SSH por la sesión principal), pero casi nada del hardware se confirmó todavía: lo no comprobado sigue marcado **(sin verificar)**.
 Cómo se construye: [`projects/linux-image/README.md`](../../projects/linux-image/README.md).
 Decisiones: ADR [0009](../decisions/0009-arranque-uboot-miniloader-rkbin.md) (arranque),
 [0010](../decisions/0010-kernel-mainline-con-dts-y-drivers-de-rocknix.md) (kernel),
@@ -134,9 +134,52 @@ p1  32768      FAT32 "RGB20S_BOOT", 256 MiB, booteable    PARTUUID 52474253-01
 p2  ...        ext4 "RGB20S_ROOT" (tamaño justo + 30 %)    PARTUUID 52474253-02
 ```
 
-Línea de comandos del kernel:
-`root=PARTUUID=52474253-02 rootfstype=ext4 rootwait rw console=ttyS2,1500000n8 console=tty0 loglevel=7 consoleblank=0 panic=0 systemd.show_status=1`
-(todos los mensajes en pantalla, sin apagarla, y un panic queda visible en vez de reiniciar).
+Línea de comandos del kernel (definida en [`boot/boot.env`](../../projects/linux-image/boot/boot.env)):
+`root=PARTUUID=52474253-02 rootfstype=ext4 rootwait rw console=ttyS2,1500000n8 console=tty0 consoleblank=0 panic=0 loglevel=4 vt.global_cursor_default=0 fbcon=logo-count:1 systemd.show_status=auto udev.log_level=3`
+(arranque silencioso con splash, sin apagar la pantalla, y un panic temprano queda visible en vez de reiniciar).
+La entrada `arch-verbose` de `extlinux.conf` usa la línea anterior al splash (`loglevel=7 systemd.show_status=1`): todos los
+mensajes en pantalla. Ver [Splash de arranque](#splash-de-arranque).
+
+## Splash de arranque
+
+Desde 2026-11-20 la imagen muestra "KingaGroove" desde el kernel hasta el launcher
+([ADR 0015](../decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md), propuesta; código y arte en
+[`projects/linux-image/splash/`](../../projects/linux-image/splash/README.md)):
+
+1. **Kernel:** logo propio de 224 colores (`CONFIG_LOGO_LINUX_CLUT224_FILE`, 640×464 arriba de todo), uno solo
+   (`fbcon=logo-count:1`), sin cursor (`vt.global_cursor_default=0`). Debajo queda una fila de texto para errores.
+2. **Userspace:** `rgb20s-splash.service` (C estático, DRM/KMS) pone el splash completo apenas arranca systemd, suelta
+   DRM master y sale cuando el launcher toma la pantalla.
+
+Lo que dice el código de Linux 7.1.2 y condiciona el diseño:
+
+| Hecho | Dónde | Consecuencia |
+|---|---|---|
+| fbcon no dibuja el logo si `console_loglevel <= CONSOLE_LOGLEVEL_QUIET` | `fbcon.c`, `fbcon_init()` | Sin `quiet`: `loglevel=4` y `CONFIG_CONSOLE_LOGLEVEL_QUIET=3` |
+| Los logos están en `__initdata` y se marcan liberados en `late_initcall_sync` | `drivers/video/logo/logo.c` | Si el DRM registra `fb0` después del init del kernel (deferred probe tardío), no hay logo del kernel |
+| Si el logo ocupa más filas de texto que la pantalla, se descarta ("boot-logo bigger than screen") | `fbcon_prepare_logo()` | Logo de 464 px de alto (29 filas de 16 px): queda una fila |
+| `pnmtologo` solo acepta PPM de texto (P3) y hasta 224 colores | `drivers/video/logo/pnmtologo.c` | `make-splash.py` genera P3 y verifica los colores |
+| El primero que abre la tarjeta sin master queda como master | `drm_auth.c`, `drm_master_open()` | El splash suelta master con `DROP_MASTER`; el launcher lo recibe al abrir |
+| fbdev no cambia la pantalla mientras haya master, salvo el paso a `KD_TEXT` | `drm_fb_helper.c`, `drm_fb_helper_set_par()` | Sin master (entre el splash y el launcher), un scroll de tty1 puede devolverle la pantalla a fbcon: el splash la vuelve a tomar |
+
+### ¿Por qué hoy la pantalla queda negra todo el arranque? (sin verificar)
+
+Con `console=tty0 loglevel=7 systemd.show_status=1` tendría que verse texto desde ~2 s. Hipótesis, de más a menos probable,
+y cómo descartarlas por SSH (las corre `device-ops`):
+
+| # | Hipótesis | Cómo verlo |
+|---|---|---|
+| 1 | El DRM de Rockchip (`display-subsystem`) se enlaza tarde, porque algún proveedor (PHY, regulador, PWM, IOMMU) queda en deferred probe hasta el timeout de `fw_devlink` (10 s) o hasta que udev carga un módulo. Encaja con "negro hasta el launcher": la consola aparece casi a la vez que la sesión | `dmesg \| grep -nE 'rockchip-drm\|dw-mipi-dsi\|panel\|fbcon\|Console: switching\|deferred'` (mirar los tiempos); `sudo cat /sys/kernel/debug/devices_deferred` |
+| 2 | El backlight arranca apagado (`pwm-backlight` con `backlight = <&backlight>` en el panel espera a que el panel lo encienda) y el panel no se habilita con el modeset de fbdev, solo con el de un master | `cat /sys/class/backlight/*/{bl_power,brightness,actual_brightness}`; `cat /sys/class/drm/card*-DSI-1/{status,enabled,dpms}` con el launcher detenido |
+| 3 | fbcon no está enlazado a `fb0` o está en otra VT | `cat /sys/class/vtconsole/vtcon*/{name,bind}`; `cat /sys/class/graphics/fbcon/cursor_blink`; `sudo fgconsole` |
+| 4 | fbcon dibuja pero el panel muestra negro hasta un modeset completo (secuencia de init del panel con el modo por defecto) | Con el launcher detenido: `sudo systemctl stop rgb20s-session; echo hola \| sudo tee /dev/tty1` |
+
+Si es la 1 o la 2, el logo del kernel no se va a ver (o se verá tarde), pero `rgb20s-splash` sí: hace su propio modeset
+apenas aparece `/dev/dri/card0`.
+
+Verificado sin la consola (2026-11-20): el logo queda en el kernel (`System.map`, paleta en el `Image`) y `rgb20s-splash`
+funciona en QEMU con `virtio-gpu` (splash, convivencia con `getty@tty1`, traspaso a otra app con DRM master). En la consola,
+nada todavía. Detalle en [`splash/README.md`](../../projects/linux-image/splash/README.md#qué-se-verificó-2026-11-20-y-qué-no).
 
 ## Diagnóstico sin consola serie
 
@@ -204,6 +247,7 @@ Lo que las skills `rockchip-rk3326-boot` y `alarm-rootfs` dicen de memoria, cont
 - [ ] Confirmar pantalla, joypad, audio, batería y Panfrost
 - [ ] Medir el tiempo de arranque y adelgazar la config del kernel
 - [ ] Servicio del groovebox en KMS (requiere `mesa`, `sdl2` y un build contra Arch)
+- [ ] Splash: confirmar en la consola el logo del kernel, el splash y el traspaso al launcher; diagnosticar la pantalla negra (ver [Splash de arranque](#splash-de-arranque))
 
 ## Fuentes
 
@@ -216,4 +260,5 @@ Lo que las skills `rockchip-rk3326-boot` y `alarm-rootfs` dicen de memoria, cont
 - Linux 7.1.2: `drivers/usb/dwc2/drd.c`, `drivers/usb/gadget/function/u_ether.c`, `arch/arm64/boot/dts/rockchip/px30.dtsi`, `rk3326-gameforce-chi.dts`, `rk3326-odroid-go.dtsi`, `rk3326-anbernic-rg351m.dtsi`
 - [Arch Linux ARM: firma de paquetes](https://archlinuxarm.org/about/package-signing) y [tarball aarch64](http://os.archlinuxarm.org/os/)
 - [Linux: USB gadget configfs](https://docs.kernel.org/usb/gadget_configfs.html)
+- Linux 7.1.2: `drivers/video/logo/{Kconfig,logo.c,pnmtologo.c}`, `drivers/video/fbdev/core/{fbcon.c,fb_logo.c}`, `Documentation/fb/fbcon.rst`, `drivers/gpu/drm/{drm_auth.c,drm_fb_helper.c,drm_file.c}` (splash)
 - Builds propios en la Mac (2026-11-19): ver [`projects/linux-image/README.md`](../../projects/linux-image/README.md)

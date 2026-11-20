@@ -1,0 +1,23 @@
+# Splash de arranque de la RGB20S por DRM/KMS (projects/linux-image/splash/, ADR 0015).
+# Arranca apenas empieza userspace, pone la imagen en pantalla, suelta DRM master y queda vivo
+# (con el buffer en pantalla) hasta que el launcher u otra app toma la pantalla, o 60 s.
+# No frena el arranque: avisa READY en cuanto dibujó o si la tarjeta DRM todavía no existe.
+
+[Unit]
+Description=RGB20S: splash de arranque hasta que aparece el launcher
+DefaultDependencies=no
+# Antes de lo que puede tocar la consola de texto o tomar la pantalla
+Before=systemd-vconsole-setup.service rgb20s-session.service getty@tty1.service
+Before=shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/usr/local/bin/rgb20s-splash
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/bin/rgb20s-splash -t 60 -w 20 /usr/local/share/rgb20s/splash.ppm
+TimeoutStartSec=10
+TimeoutStopSec=3
+
+[Install]
+WantedBy=sysinit.target

@@ -22,17 +22,12 @@ li=projects/linux-image
 img="$o/rgb20s-arch.img"
 krel="$(cat "$o/kernel/kernel.release")"
 
-# Identificadores fijos: la imagen es la misma en cada build y extlinux/fstab no cambian.
-DISK_ID=0x52474253          # "RGBS"
-BOOT_PARTUUID=52474253-01
-ROOT_PARTUUID=52474253-02
-ROOT_FSUUID=7a1c0b3e-2b20-4c5a-9e11-52474253a001
-BOOT_VOLID=52474253
+# Identificadores de disco y líneas de comandos del kernel (CMDLINE, CMDLINE_VERBOSE)
+. "$li/boot/boot.env"
 BOOT_MIB=256
 
-CMDLINE="root=PARTUUID=$ROOT_PARTUUID rootfstype=ext4 rootwait rw console=ttyS2,1500000n8 console=tty0 loglevel=7 consoleblank=0 panic=0 systemd.show_status=1"
-
-for f in "$o/uboot/uboot.bin" "$o/uboot/mkimage" "$o/kernel/Image" "$o/rootfs/rootfs.tar"; do
+for f in "$o/uboot/uboot.bin" "$o/uboot/mkimage" "$o/kernel/Image" "$o/rootfs/rootfs.tar" \
+         "$o/splash/rgb20s-splash" "$o/splash/splash.ppm"; do
   [ -f "$f" ] || { echo "falta $f (correr los pasos anteriores)" >&2; exit 2; }
 done
 
@@ -62,6 +57,15 @@ mkdir -p "$r/boot"
 # así un cambio en el overlay no obliga a repetir build-rootfs.sh
 cp -rT --no-preserve=ownership "$li/rootfs/overlay" "$r"
 chmod 0755 "$r"/usr/local/lib/rgb20s/*.sh
+log "splash de arranque (rgb20s-splash)"
+sp="$li/splash/system"
+install -D -m 0755 "$o/splash/rgb20s-splash" "$r/usr/local/bin/rgb20s-splash"
+install -D -m 0644 "$o/splash/splash.ppm" "$r/usr/local/share/rgb20s/splash.ppm"
+install -D -m 0644 "$sp/rgb20s-splash.service" "$r/etc/systemd/system/rgb20s-splash.service"
+install -D -m 0644 "$sp/getty-tty1-splash.conf" "$r/etc/systemd/system/getty@tty1.service.d/10-rgb20s-splash.conf"
+# = systemctl enable (WantedBy=sysinit.target), sin systemd en este contenedor
+mkdir -p "$r/etc/systemd/system/sysinit.target.wants"
+ln -sfn /etc/systemd/system/rgb20s-splash.service "$r/etc/systemd/system/sysinit.target.wants/rgb20s-splash.service"
 log "módulos del kernel $krel"
 rm -rf "$r/usr/lib/modules/$krel"
 cp -rT --no-preserve=ownership "$o/kernel/modroot/usr/lib/modules" "$r/usr/lib/modules"
@@ -74,7 +78,9 @@ mkdir -p "$bt/dtbs/rockchip" "$bt/extlinux" "$bt/logs"
 cp "$o/kernel/Image" "$bt/Image"
 cp "$o/kernel/dtbs/rockchip/"*.dtb "$bt/dtbs/rockchip/"
 cp "$o/kernel/config" "$bt/config-$krel"
-sed "s|@CMDLINE@|$CMDLINE|" "$li/boot/extlinux.conf.in" > "$bt/extlinux/extlinux.conf"
+sed -e "s|@CMDLINE@|$CMDLINE|" -e "s|@CMDLINE_VERBOSE@|$CMDLINE_VERBOSE|" \
+  "$li/boot/extlinux.conf.in" > "$bt/extlinux/extlinux.conf"
+grep -q '@' "$bt/extlinux/extlinux.conf" && { echo "extlinux.conf: quedó un @MARCADOR@ sin reemplazar" >&2; exit 1; }
 grep -n ' $' "$bt/extlinux/extlinux.conf" && { echo "extlinux.conf tiene espacios al final de línea" >&2; exit 1; }
 "$o/uboot/mkimage" -A arm64 -O linux -T script -C none -n "rgb20s boot" -d "$li/uboot/boot.cmd" "$bt/boot.scr" >/dev/null
 cp "$li/boot/rgb20s.conf" "$bt/rgb20s.conf"
@@ -83,7 +89,7 @@ RGB20S - Arch Linux ARM ($(date -u +%Y-%m-%d), kernel $krel)
 - rgb20s.conf      rol del USB-C (device/host), IP del gadget, logs, agrandar la raíz
 - authorized_keys  (opcional) claves SSH públicas: se agregan al usuario alarm al arrancar
 - logs/            diagnóstico de cada arranque (las últimas 10 sesiones)
-- extlinux/        entradas de arranque (DTB propio o el de ROCKNIX)
+- extlinux/        entradas de arranque: arch (splash), arch-verbose (todos los mensajes), arch-rocknix
 Documentación: projects/linux-image/README.md y docs/firmware/arch-linux-arm.md del repo.
 EOF
 

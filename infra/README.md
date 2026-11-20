@@ -294,12 +294,14 @@ riesgos: [`docs/firmware/arch-linux-arm.md`](../docs/firmware/arch-linux-arm.md)
 
 | Receta | Qué hace | Dónde corre |
 |---|---|---|
-| `just image-builder` | Contenedor `rgb20s-image-builder:dev` (trixie x86_64 fijado como `rgb20s-cross`: gcc cruzado, dtc, mtools, e2fsprogs, sfdisk) | Docker |
+| `just image-builder` | Contenedor `rgb20s-image-builder:dev` (trixie x86_64 fijado como `rgb20s-cross`: gcc cruzado con `libc6-dev-arm64-cross`, dtc, mtools, e2fsprogs, sfdisk) | Docker |
 | `just img-fetch [componente]` | Descarga y verifica fuentes a `infra/downloads/` (sha256, hash git, md5 + firma GPG de ALARM) | host |
 | `just img-uboot` | U-Boot v2025.10 + rkbin → `infra/build/out/uboot/uboot.bin` | `rgb20s-image-builder` |
-| `just img-kernel` | Kernel 7.1.2 + DTB + joypad → `infra/build/out/kernel/` | `rgb20s-image-builder` |
+| `just img-splash` | Arte del splash (`make-splash.py`) + `rgb20s-splash` (C estático) → `infra/build/out/splash/` | `rgb20s-image-builder` |
+| `just img-kernel` | Kernel 7.1.2 (con el logo de arranque) + DTB + joypad → `infra/build/out/kernel/` | `rgb20s-image-builder` |
 | `just img-rootfs` | `docker import` del tarball de ALARM, personalización emulada (arm64), `docker export` | contenedor arm64 |
 | `just img-assemble` | Particiona un archivo (MBR), FAT con `mtools`, ext4 con `mke2fs -d`, `dd` del bootloader | `rgb20s-image-builder` (root del contenedor, sin `--privileged`) |
+| `just img-device-update` | Paquete para actualizar una consola en uso sin reflashear → `infra/build/out/device-update/` (ver `projects/linux-image/splash/README.md`) | `rgb20s-image-builder` |
 | `just img` | Todo lo anterior | |
 
 Versiones fijadas en [`image/sources.lock`](image/sources.lock). Claves SSH locales en `infra/image/local/` (ignorada por git).
