@@ -18,7 +18,12 @@ if ssh "$host" 'command -v rsync >/dev/null'; then
   fi
 else
   echo "deploy: la consola no tiene rsync, copio con scp"
-  scp "$bin" "${licenses[@]}" "$host:$remote/"
+  # El binario va a un nombre temporal y después se renombra: si la app está corriendo,
+  # sobrescribirlo en el lugar falla ("text file busy").
+  name="$(basename "$bin")"
+  scp "$bin" "$host:$remote/.$name.new"
+  ssh "$host" "mv -f '$remote/.$name.new' '$remote/$name'"
+  [ ${#licenses[@]} -eq 0 ] || scp "${licenses[@]}" "$host:$remote/"
   if [ -n "$assets" ] && [ -d "$assets" ]; then
     # Equivalente a --delete: se reemplaza la carpeta entera
     ssh "$host" "rm -rf '$remote/assets'"
