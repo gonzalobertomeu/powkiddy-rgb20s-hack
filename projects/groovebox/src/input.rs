@@ -7,6 +7,32 @@ use sdl2::controller::{Axis, Button as PadButton};
 use sdl2::keyboard::Keycode;
 use serde::Deserialize;
 
+/// Disposición de los botones frontales. La RGB20S usa la de Nintendo: A a la derecha, B abajo,
+/// Y a la izquierda y X arriba. SDL nombra los botones del GameController por posición, al estilo
+/// Xbox (A abajo, B derecha, X izquierda, Y arriba), así que con `Nintendo` se intercambian A↔B y
+/// X↔Y. Si en la consola los botones llegan con las etiquetas cambiadas, `RGB20S_PAD_LAYOUT=xbox`
+/// usa los nombres de SDL tal cual (sin verificar en el hardware).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PadLayout {
+    Nintendo,
+    Xbox,
+}
+
+impl PadLayout {
+    /// Lee `RGB20S_PAD_LAYOUT` (`nintendo` o `xbox`) una sola vez; por defecto, `Nintendo`.
+    pub fn current() -> PadLayout {
+        static LAYOUT: std::sync::OnceLock<PadLayout> = std::sync::OnceLock::new();
+        *LAYOUT.get_or_init(|| Self::parse(std::env::var("RGB20S_PAD_LAYOUT").ok().as_deref()))
+    }
+
+    fn parse(value: Option<&str>) -> PadLayout {
+        match value.map(str::to_ascii_lowercase).as_deref() {
+            Some("xbox") => PadLayout::Xbox,
+            _ => PadLayout::Nintendo,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Button {
     Up,
@@ -72,16 +98,27 @@ impl Button {
 
     /// Botones del GameController de SDL. SDL usa nombres posicionales de Xbox (A abajo);
     /// en la RGB20S, qué botón físico llega como cada uno depende del mapeo de dArkOS
-    /// (sin verificar). Los gatillos analógicos llegan como ejes, no como botones.
+    /// Botón del GameController de SDL según la disposición de la consola (`PadLayout::current`).
     pub fn from_pad(b: PadButton) -> Option<Button> {
+        Self::from_pad_with(b, PadLayout::current())
+    }
+
+    /// SDL usa nombres posicionales de Xbox; ver `PadLayout`. Los gatillos analógicos llegan como
+    /// ejes, no como botones.
+    pub fn from_pad_with(b: PadButton, layout: PadLayout) -> Option<Button> {
+        let nintendo = layout == PadLayout::Nintendo;
         Some(match b {
             PadButton::DPadUp => Button::Up,
             PadButton::DPadDown => Button::Down,
             PadButton::DPadLeft => Button::Left,
             PadButton::DPadRight => Button::Right,
+            PadButton::A if nintendo => Button::B,
             PadButton::A => Button::A,
+            PadButton::B if nintendo => Button::A,
             PadButton::B => Button::B,
+            PadButton::X if nintendo => Button::Y,
             PadButton::X => Button::X,
+            PadButton::Y if nintendo => Button::X,
             PadButton::Y => Button::Y,
             PadButton::LeftShoulder => Button::L1,
             PadButton::RightShoulder => Button::R1,
@@ -313,6 +350,33 @@ impl Triggers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pad_layout_nintendo_swaps_face_buttons() {
+        let n = PadLayout::Nintendo;
+        assert_eq!(Button::from_pad_with(PadButton::B, n), Some(Button::A)); // derecha
+        assert_eq!(Button::from_pad_with(PadButton::A, n), Some(Button::B)); // abajo
+        assert_eq!(Button::from_pad_with(PadButton::X, n), Some(Button::Y)); // izquierda
+        assert_eq!(Button::from_pad_with(PadButton::Y, n), Some(Button::X)); // arriba
+        assert_eq!(
+            Button::from_pad_with(PadButton::DPadUp, n),
+            Some(Button::Up)
+        );
+    }
+
+    #[test]
+    fn pad_layout_xbox_keeps_sdl_names() {
+        let x = PadLayout::Xbox;
+        assert_eq!(Button::from_pad_with(PadButton::A, x), Some(Button::A));
+        assert_eq!(Button::from_pad_with(PadButton::Y, x), Some(Button::Y));
+    }
+
+    #[test]
+    fn pad_layout_parse_defaults_to_nintendo() {
+        assert_eq!(PadLayout::parse(None), PadLayout::Nintendo);
+        assert_eq!(PadLayout::parse(Some("XBOX")), PadLayout::Xbox);
+        assert_eq!(PadLayout::parse(Some("otra")), PadLayout::Nintendo);
+    }
 
     #[test]
     fn repo_keymap_parses() {

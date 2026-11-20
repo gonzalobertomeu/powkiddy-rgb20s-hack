@@ -18,6 +18,11 @@ Arranca con la última app elegida seleccionada (`$XDG_STATE_HOME/launcher/last`
 `~/.local/state/launcher/last`; se guarda el nombre). Reiniciar y Apagar no se recuerdan.
 Arriba a la derecha, la carga de la batería (`/sys/class/power_supply/*` con `type` = `Battery`; `+` = cargando).
 
+Los botones frontales siguen la disposición **Nintendo** de la consola: A a la derecha, B abajo, Y a la
+izquierda y X arriba. SDL los nombra por posición al estilo Xbox, así que el código intercambia A↔B y X↔Y
+(`PadLayout` en `src/input.rs`). Si en la consola quedan al revés, `RGB20S_PAD_LAYOUT=xbox` usa los
+nombres de SDL tal cual **(sin verificar en el hardware)**.
+
 ## apps.toml
 
 ```toml

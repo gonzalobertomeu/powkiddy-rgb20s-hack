@@ -111,6 +111,11 @@ Ejemplos: poner una nota y subirla un semitono = `X`, y sin soltar `X`, `→`. B
 En la consola los botones llegan como GameController de SDL; L2/R2 analógicos (ejes) se convierten en botones con
 histéresis, y los sticks se leen con zona muerta del 15 %.
 
+Los botones frontales siguen la disposición **Nintendo** de la consola: A a la derecha, B abajo, Y a la
+izquierda y X arriba. SDL los nombra por posición al estilo Xbox, así que el código intercambia A↔B y X↔Y
+(`PadLayout` en `src/input.rs`). Si en la consola quedan al revés, `RGB20S_PAD_LAYOUT=xbox` usa los
+nombres de SDL tal cual **(sin verificar en el hardware)**.
+
 ## Fuente
 
 **Spleen 2.3.0** de Frederic Cambus, licencia **BSD-2-Clause** ([`fonts/LICENSE-spleen`](fonts/LICENSE-spleen)),
