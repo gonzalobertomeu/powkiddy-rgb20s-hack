@@ -17,6 +17,7 @@ use rgb20s_common::audio_state::AudioState;
 use rgb20s_common::battery::Battery;
 
 use crate::app::{App, FontSize, Screen};
+use crate::engine::PlayMode;
 use crate::input::Button;
 use crate::model::TrackKind;
 
@@ -341,17 +342,28 @@ pub fn title_bar(p: &mut Painter, screen: Screen, context: &str, right: &[impl A
 
 /// Partes del lado derecho del título comunes a todas las pantallas (se muestran las que entren).
 pub fn status_parts(app: &App) -> Vec<String> {
-    // La fuente no tiene ▶: "> " = sonando, "■ " = parado.
-    let state = if app.transport.is_some() { ">" } else { "■" };
-    let mut parts = vec![
-        format!("{state} {:.1} BPM", app.project.tempo_bpm),
-        app.project_label(),
-        format!("oct {}", app.octave),
-    ];
+    // La fuente no tiene ▶: "> " = sonando, "■ " = parado. Sonando, lo primero es qué suena
+    // (no más largo que el tempo, para que entre donde antes entraba).
+    let tempo = format!("{:.1} BPM", app.project.tempo_bpm);
+    let mut parts = match app.transport {
+        Some(mode) => vec![format!("> {}", play_mode_label(mode)), tempo],
+        None => vec![format!("■ {tempo}")],
+    };
+    parts.extend([app.project_label(), format!("oct {}", app.octave)]);
     if let Some(load) = &app.audio_load {
         parts.push(format!("CPU {:.0}%", load.cpu_avg.max(load.cpu_peak)));
     }
     parts
+}
+
+/// Modo de reproducción en el título, corto para que entre con la fuente grande.
+fn play_mode_label(mode: PlayMode) -> &'static str {
+    match mode {
+        PlayMode::Song { .. } => "CANCIÓN",
+        PlayMode::Section { .. } => "LOOP SEC",
+        PlayMode::Chain { .. } => "LOOP CAD",
+        PlayMode::Phrase { .. } => "LOOP FRA",
+    }
 }
 
 /// Carga del motor para la pantalla Proyecto (entra con la fuente de 12×24).
@@ -459,11 +471,23 @@ pub fn footer(p: &mut Painter, screen: Screen, lines: i32, help: &[&str]) -> R {
     p.fill(0, y0, WIDTH, 1, theme::LINE)?;
     minimap(p, WIDTH - 8 - MINIMAP_W, y0 + (h - MINIMAP_H) / 2, screen)?;
 
+    for (item, (x, line)) in help.iter().zip(help_layout(help, p.cw, lines)) {
+        let (key, desc) = item.split_once(' ').unwrap_or((item, ""));
+        let y = y0 + 4 + line * p.ch;
+        let after_key = p.text(x, y, key, theme::ACCENT)?;
+        p.text(after_key + p.cw, y, desc, theme::DIM)?;
+    }
+    Ok(())
+}
+
+/// Posición `(x, línea)` de los elementos de la ayuda que entran en `lines` líneas a la
+/// izquierda del minimapa, en orden; los que no entran se omiten.
+fn help_layout(help: &[&str], cw: i32, lines: i32) -> Vec<(i32, i32)> {
     let max_x = WIDTH - 8 - MINIMAP_W - 12;
     let (mut x, mut line) = (8, 0);
-    let y_of = |p: &Painter, line: i32| y0 + 4 + line * p.ch;
+    let mut out = Vec::with_capacity(help.len());
     for item in help {
-        let w = p.text_width(item);
+        let w = item.chars().count() as i32 * cw;
         if x > 8 && x + w > max_x {
             line += 1;
             x = 8;
@@ -471,13 +495,10 @@ pub fn footer(p: &mut Painter, screen: Screen, lines: i32, help: &[&str]) -> R {
         if line >= lines {
             break;
         }
-        let (key, desc) = item.split_once(' ').unwrap_or((item, ""));
-        let y = y_of(p, line);
-        let after_key = p.text(x, y, key, theme::ACCENT)?;
-        let end = p.text(after_key + p.cw, y, desc, theme::DIM)?;
-        x = end + 2 * p.cw;
+        out.push((x, line));
+        x += w + 2 * cw;
     }
-    Ok(())
+    out
 }
 
 /// Línea de mensaje transitorio (avisos en otro color).
@@ -533,6 +554,52 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lo que reproduce Start y Select + Start se ve en el pie de cada pantalla con las dos
+    /// fuentes; con la chica entra toda la ayuda.
+    #[test]
+    fn help_shows_start_and_loop_with_both_fonts() {
+        let helps: [&[&str]; 5] = [
+            &screens::SONG_HELP,
+            &grid::HELP,
+            &screens::CHAIN_HELP,
+            &phrase::HELP,
+            &screens::INSTRUMENT_HELP,
+        ];
+        for help in helps {
+            assert!(help[0].starts_with("Start "), "{help:?}");
+            assert_eq!(help[1], "Sel+Start loop");
+            for cw in [8, 12] {
+                assert!(help_layout(help, cw, 2).len() >= 2, "{help:?} con {cw} px");
+            }
+            assert_eq!(help_layout(help, 8, 2).len(), help.len(), "{help:?}");
+        }
+    }
+
+    #[test]
+    fn title_says_what_is_playing() {
+        let mut app = App::new(crate::model::Project::new_default());
+        assert!(status_parts(&app)[0].starts_with("■ "));
+        for (mode, label) in [
+            (PlayMode::Song { from_row: 2 }, "> CANCIÓN"),
+            (PlayMode::Section { row: 0, entry: 1 }, "> LOOP SEC"),
+            (PlayMode::Chain { track: 1, row: 0 }, "> LOOP CAD"),
+            (
+                PlayMode::Phrase {
+                    track: 1,
+                    row: 0,
+                    entry: 0,
+                },
+                "> LOOP FRA",
+            ),
+        ] {
+            app.transport = Some(mode);
+            let parts = status_parts(&app);
+            assert_eq!(parts[0], label);
+            // Entra donde entraba "> 120.0 BPM".
+            assert!(parts[0].chars().count() <= "> 120.0 BPM".len());
+        }
+    }
 
     #[test]
     fn scroll_keeps_cursor_visible() {

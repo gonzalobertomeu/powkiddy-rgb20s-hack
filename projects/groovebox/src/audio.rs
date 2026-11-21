@@ -496,4 +496,65 @@ mod tests {
         // 400 × 256 frames = 2,1 s a 100–150 BPM: unos 16 pasos.
         assert!(playheads > 10, "{playheads} posiciones publicadas");
     }
+    /// Regresión (reporte en la consola): Start en la Canción con una fila desalineada. Cada
+    /// pista pasa a la fila siguiente al terminar su cadena, sin esperar a la más larga.
+    #[test]
+    fn start_in_song_moves_each_track_to_the_next_row() {
+        use crate::app::{App, Screen};
+        use crate::engine::PlayMode;
+        use crate::gestures::Gesture;
+        use crate::model::{Project, Section};
+
+        let (mut cmd_tx, cmd_rx) = rtrb::RingBuffer::new(COMMAND_QUEUE);
+        let (ev_tx, mut ev_rx) = rtrb::RingBuffer::new(EVENT_QUEUE);
+        let mut p = Processor::new(48_000.0, 2, cmd_rx, ev_tx, Arc::new(AudioStats::default()));
+        let mut project = Project::new_default();
+        // Fila 0: la pista 0 con 3 frases, el resto con 1. Fila 1: una frase en cada pista.
+        for entry in 1..3 {
+            project
+                .ensure_phrase(0, Section { row: 0, entry }, None)
+                .unwrap();
+        }
+        for t in 0..crate::model::TRACKS {
+            project
+                .ensure_phrase(t, Section { row: 1, entry: 0 }, None)
+                .unwrap();
+        }
+        assert!(project.row_misaligned(0));
+        let mut app = App::new(project);
+        app.screen = Screen::Song;
+        app.handle(Gesture::Play, 0);
+        assert_eq!(app.transport, Some(PlayMode::Song { from_row: 0 }));
+
+        let mut mirror = crate::sync::EngineMirror::new();
+        let mut out = vec![0.0f32; 256 * 2];
+        // A 120 BPM una frase son 96 000 frames: se miran los cabezales a mitad de cada frase.
+        let phrase = 96_000usize;
+        let mut rows = Vec::new();
+        let mut frame = 0usize;
+        for k in 0..4 {
+            while frame < k * phrase + phrase / 2 {
+                mirror.sync(&app.project, app.transport, &mut |c| cmd_tx.push(c).is_ok());
+                p.process(&mut out);
+                frame += 256;
+                while let Ok(ev) = ev_rx.pop() {
+                    if let Event::Playhead(h) = ev {
+                        app.set_playhead(h);
+                    }
+                }
+            }
+            let h = app.playhead.heads;
+            rows.push(((h[0].row, h[0].entry), (h[1].row, h[1].entry)));
+        }
+        assert_eq!(
+            rows,
+            [
+                ((0, 0), (0, 0)),
+                ((0, 1), (1, 0)),
+                ((0, 2), (0, 0)),
+                ((1, 0), (1, 0)),
+            ],
+            "la pista 1 pasa a la fila 1 sin esperar a la 0; el bloque de 2 filas vuelve a empezar"
+        );
+    }
 }

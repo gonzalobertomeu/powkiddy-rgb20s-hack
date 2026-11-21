@@ -25,7 +25,10 @@ fn title(p: &mut Painter, app: &App, context: &str) -> R {
     title_bar(p, app.screen, context, &parts)
 }
 
-const SONG_HELP: [&str; 9] = [
+// El transporte va primero: con la fuente grande no entra toda la ayuda.
+pub(super) const SONG_HELP: [&str; 10] = [
+    "Start canción",
+    "Sel+Start loop",
     "A poner",
     "2xA nueva",
     "A+Y clonar",
@@ -34,10 +37,11 @@ const SONG_HELP: [&str; 9] = [
     "Y selec.",
     "Sel+A pegar",
     "L2/R2 página",
-    "Start canción",
 ];
 
-const CHAIN_HELP: [&str; 9] = [
+pub(super) const CHAIN_HELP: [&str; 10] = [
+    "Start cadena",
+    "Sel+Start loop",
     "A poner",
     "2xA nueva",
     "A+Y clonar",
@@ -46,7 +50,6 @@ const CHAIN_HELP: [&str; 9] = [
     "Y selec.",
     "Sel+A pegar",
     "L2/R2 fila",
-    "Start cadena",
 ];
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -426,14 +429,15 @@ pub fn chain(p: &mut Painter, app: &App, view: &View) -> R {
     footer_or_selection(p, app, lines, &CHAIN_HELP)
 }
 
-const INSTRUMENT_HELP: [&str; 7] = [
+pub(super) const INSTRUMENT_HELP: [&str; 8] = [
+    "Start frase",
+    "Sel+Start loop",
     "A+cruz voces",
     "A+B por defecto",
     "X escuchar",
     "Y copiar instr.",
     "Sel+A pegar instr.",
     "L1/R1 pista",
-    "Start frase",
 ];
 
 /// Instrumento (H4): por ahora solo el tipo y las voces de la pista; el resto llega en H8.

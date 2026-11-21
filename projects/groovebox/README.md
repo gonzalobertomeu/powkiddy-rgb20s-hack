@@ -58,7 +58,8 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
 - **Cabezal**: en la Grilla, barras verdes arriba y abajo del paso que suena en cada pista (grises si está en mute) y el
   número de paso en verde; en la Frase, `>` y el número en verde; en la Cadena, `>` en la posición; en la Canción, la
   celda en verde. En la Grilla y la Frase solo se ve si la sección que suena es la que se mira.
-  En la barra de título, `>` = sonando, `■` = parado.
+  En la barra de título, `■` = parado y, sonando, qué suena: `> CANCIÓN`, `> LOOP SEC`, `> LOOP CAD` o `> LOOP FRA`.
+  El pie de cada pantalla empieza con su Start y `Sel+Start loop` (con la fuente grande no entra toda la ayuda).
 - **Grilla**: las 8 pistas × 16 pasos de la sección actual `(fila, entrada de cadena)`, con encabezados, columna
   FRA, panel de información y pie con ayuda y minimapa. Paso con nota = bloque del color del tipo de pista
   (percusión naranja, sample turquesa, sinte violeta) con intensidad según la velocidad; acorde = rayas; largo =

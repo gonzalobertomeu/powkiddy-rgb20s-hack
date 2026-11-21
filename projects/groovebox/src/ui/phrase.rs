@@ -8,8 +8,10 @@ use super::{
 use crate::app::{App, FontSize, PhraseCol};
 use crate::model::{ChordKind, NoteCell, PHRASE_STEPS, TrackKind, gate_label, note_name};
 
-const HELP: [&str; 8] = [
-    "A poner/editar",
+pub(super) const HELP: [&str; 10] = [
+    "Start frase",
+    "Sel+Start loop",
+    "A poner",
     "A+B borrar",
     "A+L1/R1 acorde",
     "A+Y clonar",
