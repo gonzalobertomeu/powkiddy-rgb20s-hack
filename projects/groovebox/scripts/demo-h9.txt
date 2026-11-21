@@ -1,0 +1,107 @@
+# Demo del H9 con el proyecto demo (GROOVEBOX_DEMO=1): pantalla Mezcla parada y sonando, volumen,
+# paneo y envíos de las pistas, la ganancia master, las filas de efectos, los sticks en vivo y la
+# Mezcla con la fuente de 12×24.
+# Uso sin placa de sonido ni escritorio (motor al ritmo real, sin salida):
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=null GROOVEBOX_DEMO=1 \
+#     GROOVEBOX_DATA=/tmp/gb-datos GROOVEBOX_SCRIPT=.../demo-h9.txt groovebox
+
+wait 300
+
+# Grilla → Mezcla (Select + ↓)
+press select
+tap down
+release select
+wait 200
+shot h9-mezcla-parada.bmp
+
+# Start: la canción suena y se mueven los medidores y las voces
+tap start
+wait 1500
+shot h9-mezcla-sonando.bmp
+
+# HH-CER (pista 3): volumen −10, paneo L30 (A + ↓ ×3), reverb 20
+tap right 2
+press a
+tap down
+release a
+tap down
+press a
+tap down 3
+release a
+tap down 2
+press a
+tap up 2
+release a
+wait 300
+shot h9-mezcla-hh-paneo.bmp
+
+# SINTE (pista 8): envío a delay 40 y a reverb 50; mute de las PALMAS con A
+tap right 5
+tap up
+press a
+tap up 4
+release a
+tap down
+press a
+tap up 5
+release a
+tap left 3
+tap down
+tap a
+wait 300
+shot h9-mezcla-envios-mute.bmp
+tap a
+
+# MASTER: B + ↑ a la fila del volumen, → a la columna MASTER, +6 dB (A + ↑)
+press b
+tap up
+release b
+tap right 4
+press a
+tap up
+release a
+wait 800
+shot h9-mezcla-master.bmp
+
+# Efectos: fila DELAY, tiempo 3/16 → 1/4 y realimentación +10
+press b
+tap down
+release b
+tap up 2
+press a
+tap right
+release a
+tap right
+press a
+tap up
+release a
+wait 300
+shot h9-mezcla-delay.bmp
+
+# Sticks en el BAJO (pista 7): izquierdo abajo a la derecha (abre el filtro), derecho arriba
+tap l1
+stick left 80 40
+stick right 0 70
+wait 600
+shot h9-mezcla-sticks.bmp
+stick left 0 0
+stick right 0 0
+wait 300
+
+# Fuente de 12×24 (Proyecto → fuente) y de vuelta a la Mezcla
+press select
+tap up
+release select
+press select
+tap up
+release select
+tap down 4
+tap a
+tap b
+press select
+tap down
+release select
+wait 300
+shot h9-mezcla-12x24.bmp
+tap start
+quit

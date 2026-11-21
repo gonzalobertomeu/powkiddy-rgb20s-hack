@@ -3,7 +3,7 @@
 
 use super::BLOCK;
 use super::drum::DrumVoice;
-use super::synth::SynthVoice;
+use super::synth::{SynthVoice, VoiceMod};
 use crate::model::TRACKS;
 
 pub const POOL_VOICES: usize = 16;
@@ -18,10 +18,10 @@ pub enum Source {
 }
 
 impl Source {
-    fn render(&mut self, out: &mut [f32]) -> bool {
+    fn render(&mut self, out: &mut [f32], m: VoiceMod) -> bool {
         match self {
             Source::Drum(v) => v.render(out),
-            Source::Synth(v) => v.render(out),
+            Source::Synth(v) => v.render(out, m),
         }
     }
 
@@ -109,6 +109,14 @@ impl VoicePool {
     /// Voces sonando, incluidas las que se están fundiendo (máximo 20).
     pub fn in_use(&self) -> usize {
         self.voices().count() + self.fading()
+    }
+
+    /// Voces (sin contar los fundidos) de cada pista, en `counts`.
+    pub fn count_by_track(&self, counts: &mut [u8; TRACKS]) {
+        counts.fill(0);
+        for v in self.voices() {
+            counts[usize::from(v.track)] += 1;
+        }
     }
 
     #[cfg(test)]
@@ -234,28 +242,35 @@ impl VoicePool {
     }
 
     /// Suma cada voz en el buffer de su pista (`n` ≤ BLOCK muestras). Aplica los note-off en su
-    /// muestra exacta. Devuelve la máscara de pistas que recibieron señal.
-    pub fn render(&mut self, bufs: &mut [[f32; BLOCK]; TRACKS], n: usize) -> u8 {
+    /// muestra exacta. `mods` es la modulación de los sticks de cada pista. Devuelve la máscara
+    /// de pistas que recibieron señal.
+    pub fn render(
+        &mut self,
+        bufs: &mut [[f32; BLOCK]; TRACKS],
+        n: usize,
+        mods: &[VoiceMod; TRACKS],
+    ) -> u8 {
         let mut mask = 0u8;
         for slot in &mut self.voices {
             let Some(v) = slot else { continue };
             let buf = &mut bufs[usize::from(v.track)][..n];
             mask |= 1 << v.track;
             v.rendered = true;
+            let m = mods[usize::from(v.track)];
             let alive = match v.gate {
                 Some(g) if (g as usize) < n => {
                     let (a, b) = buf.split_at_mut(g as usize);
-                    v.source.render(a);
+                    v.source.render(a, m);
                     v.gate = None;
                     v.state = VoiceState::Released;
                     v.source.release();
-                    v.source.render(b)
+                    v.source.render(b, m)
                 }
                 Some(g) => {
                     v.gate = Some(g - n as u32);
-                    v.source.render(buf)
+                    v.source.render(buf, m)
                 }
-                None => v.source.render(buf),
+                None => v.source.render(buf, m),
             };
             if !alive {
                 *slot = None;
@@ -266,7 +281,7 @@ impl VoicePool {
             let Some(f) = slot else { continue };
             let scratch = &mut self.scratch[..n];
             scratch.fill(0.0);
-            let alive = f.source.render(scratch);
+            let alive = f.source.render(scratch, mods[usize::from(f.track)]);
             let buf = &mut bufs[usize::from(f.track)][..n];
             mask |= 1 << f.track;
             for (o, &s) in buf.iter_mut().zip(scratch.iter()) {

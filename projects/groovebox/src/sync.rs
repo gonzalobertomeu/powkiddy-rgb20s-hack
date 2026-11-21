@@ -1,7 +1,7 @@
 //! Del proyecto de la interfaz a la copia del motor.
 //!
 //! `EngineMirror` guarda lo último que se le mandó al motor y, en cada `sync`, manda solo lo que
-//! cambió como comandos chicos (`SetStep`, `SetChainEntry`, `SetSongCell`, `SetMix`...). Así
+//! cambió como comandos chicos (`SetStep`, `SetChainEntry`, `SetSongCell`, `SetMix`, `SetFx`...). Así
 //! cualquier edición (poner o borrar notas, clonar frases, cambiar la FRA, crear cadenas) llega
 //! sin que cada lugar del código que edita tenga que acordarse de avisar. Comparar todo el
 //! proyecto cuesta unos 10 000 comparaciones chicas: nada en el hilo de interfaz.
@@ -12,16 +12,19 @@
 use crate::app::Audition;
 use crate::engine::{Command, MAX_NOTES, PlayMode};
 use crate::instrument::Instrument;
+use crate::mix::{FxSettings, MasterSettings};
 use crate::model::{
-    CHAIN_LEN, ChainEntry, ChainId, MAX_CHAINS, MAX_PHRASES, MAX_SONG_ROWS, PHRASE_STEPS, Project,
-    Step, TRACKS,
+    CHAIN_LEN, ChainEntry, ChainId, ChannelStrip, MAX_CHAINS, MAX_PHRASES, MAX_SONG_ROWS,
+    PHRASE_STEPS, Project, Step, TRACKS,
 };
 
 pub struct EngineMirror {
     tempo: Option<f32>,
     swing: Option<u8>,
     instruments: [Option<Instrument>; TRACKS],
-    mix: [(bool, bool); TRACKS],
+    mix: [ChannelStrip; TRACKS],
+    fx: Option<FxSettings>,
+    master: Option<MasterSettings>,
     phrases: Box<[[Step; PHRASE_STEPS]]>,
     chains: Box<[[Option<ChainEntry>; CHAIN_LEN]]>,
     rows: Box<[[Option<ChainId>; TRACKS]]>,
@@ -41,7 +44,9 @@ impl EngineMirror {
             tempo: None,
             swing: None,
             instruments: [None; TRACKS],
-            mix: [(false, false); TRACKS],
+            mix: [ChannelStrip::default(); TRACKS],
+            fx: None,
+            master: None,
             phrases: vec![[Step::default(); PHRASE_STEPS]; MAX_PHRASES].into_boxed_slice(),
             chains: vec![[None; CHAIN_LEN]; MAX_CHAINS].into_boxed_slice(),
             rows: vec![[None; TRACKS]; MAX_SONG_ROWS].into_boxed_slice(),
@@ -115,18 +120,28 @@ impl EngineMirror {
             }
         }
         for (t, (sent, track)) in self.mix.iter_mut().zip(&project.tracks).enumerate() {
-            let value = (track.mix.mute, track.mix.solo);
-            if *sent != value {
+            if *sent != track.mix {
                 let cmd = Command::SetMix {
                     track: t as u8,
-                    mute: value.0,
-                    solo: value.1,
+                    strip: track.mix,
                 };
                 if !send(cmd) {
                     return false;
                 }
-                *sent = value;
+                *sent = track.mix;
             }
+        }
+        if self.fx != Some(project.fx) {
+            if !send(Command::SetFx(project.fx)) {
+                return false;
+            }
+            self.fx = Some(project.fx);
+        }
+        if self.master != Some(project.master) {
+            if !send(Command::SetMaster(project.master)) {
+                return false;
+            }
+            self.master = Some(project.master);
         }
         if self.tempo != Some(project.tempo_bpm) {
             if !send(Command::SetTempo(project.tempo_bpm)) {
@@ -162,6 +177,43 @@ impl EngineMirror {
                 return false;
             }
             self.transport = transport;
+        }
+        true
+    }
+}
+
+/// Sticks → motor (spec-ui: "Sticks = performance"). Mueven la pista actual; las demás quedan
+/// en 0 (al cambiar de pista con el stick movido, la anterior vuelve a su valor guardado). Solo
+/// manda lo que cambió, cuantizado a 1/256 para no llenar la cola con el ruido del eje.
+#[derive(Default)]
+pub struct PerformSender {
+    sent: [[i16; 4]; TRACKS],
+}
+
+impl PerformSender {
+    /// `left` y `right` son `(x, y)` de cada stick en −1..=1, con la zona muerta aplicada.
+    /// Devuelve `false` si la cola se llenó (lo que falta se manda en la próxima llamada).
+    pub fn update(
+        &mut self,
+        track: usize,
+        left: (f32, f32),
+        right: (f32, f32),
+        send: &mut impl FnMut(Command) -> bool,
+    ) -> bool {
+        let q = |v: f32| (v.clamp(-1.0, 1.0) * 256.0).round() as i16;
+        let current = [q(left.0), q(left.1), q(right.0), q(right.1)];
+        for (t, sent) in self.sent.iter_mut().enumerate() {
+            let want = if t == track { current } else { [0; 4] };
+            if *sent != want {
+                let cmd = Command::Perform {
+                    track: t as u8,
+                    offsets: want.map(|v| f32::from(v) / 256.0),
+                };
+                if !send(cmd) {
+                    return false;
+                }
+                *sent = want;
+            }
         }
         true
     }
@@ -271,6 +323,72 @@ mod tests {
         assert_eq!(sent, [Command::SetSwing(66)]);
         collect(&project, &mut sent);
         assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn mix_fx_and_master_are_sent_once_per_change() {
+        let mut project = Project::new_default();
+        let mut mirror = EngineMirror::new();
+        let mut sent = Vec::new();
+        let mut collect = |p: &Project, sent: &mut Vec<Command>| {
+            sent.clear();
+            assert!(mirror.sync(p, None, &mut |cmd| {
+                sent.push(cmd);
+                true
+            }));
+        };
+        collect(&project, &mut sent);
+        assert!(sent.contains(&Command::SetFx(FxSettings::default())));
+        assert!(sent.contains(&Command::SetMaster(MasterSettings::default())));
+        project.tracks[3].mix.pan = -20;
+        project.fx.reverb.size = 90;
+        project.master.limiter = false;
+        collect(&project, &mut sent);
+        assert_eq!(
+            sent,
+            [
+                Command::SetMix {
+                    track: 3,
+                    strip: project.tracks[3].mix
+                },
+                Command::SetFx(project.fx),
+                Command::SetMaster(project.master),
+            ]
+        );
+        collect(&project, &mut sent);
+        assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn sticks_move_only_the_current_track_and_return_to_zero() {
+        let mut perf = PerformSender::default();
+        let mut sent = Vec::new();
+        let mut run = |track, left, right, sent: &mut Vec<Command>| {
+            sent.clear();
+            assert!(perf.update(track, left, right, &mut |c| {
+                sent.push(c);
+                true
+            }));
+        };
+        run(2, (0.0, 0.0), (0.0, 0.0), &mut sent);
+        assert!(sent.is_empty(), "en reposo no manda nada");
+        run(2, (-0.5, 0.25), (0.0, 1.0), &mut sent);
+        assert_eq!(
+            sent,
+            [Command::Perform {
+                track: 2,
+                offsets: [-0.5, 0.25, 0.0, 1.0]
+            }]
+        );
+        run(2, (-0.5001, 0.25), (0.0, 1.0), &mut sent);
+        assert!(sent.is_empty(), "cambios por debajo de 1/256 no se mandan");
+        // Cambiar de pista con el stick movido: la anterior vuelve a 0.
+        run(3, (-0.5, 0.25), (0.0, 1.0), &mut sent);
+        assert_eq!(sent.len(), 2);
+        assert!(sent.contains(&Command::Perform {
+            track: 2,
+            offsets: [0.0; 4]
+        }));
     }
 
     #[test]

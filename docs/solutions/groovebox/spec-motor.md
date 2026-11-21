@@ -214,6 +214,15 @@ No genera audio: envía notas (incluidos los acordes), velocidades y, desde los 
 | Compresor con sidechain | Seguidor de envolvente desde otra pista | umbral, ratio, tiempos, fuente | — | después |
 | Chorus | 2 líneas moduladas | velocidad, profundidad, mezcla | ~50 KB | después |
 
+**Implementado (H9)**, con estos desvíos ([dsp.md](dsp.md#mezcla-efectos-y-master-h9)): el delay usa 2^18 muestras por
+canal (5,5 s, 2 MB los dos) para que "1 compás" entre desde 44 BPM; la reverb es el FDN de 4 líneas con 2 allpass,
+"tamaño" es el RT60 (0,3–8 s) y las líneas no se modulan; el master lleva un **limitador de picos sin anticipación**
+delante del soft clip ([ADR 0018](../../decisions/0018-limitador-sin-anticipacion-antes-del-soft-clip.md), propuesta) y
+el de anticipación sigue en v1. Volumen y envíos con ley cuadrática (100 = 0 dB) y paneo seno/coseno normalizado a 0 dB
+en el centro (no por tabla: se calcula al recibir `SetMix`). Comandos: `SetMix { track, strip }` (volumen, paneo,
+envíos, mute y solo), `SetFx`, `SetMaster` y `Perform { track, offsets: [f32; 4] }`; evento `Meters` (picos de las 8
+pistas y el master, voces por pista y de la bolsa, reducción del limitador) cada 1600 muestras.
+
 ## Secuenciador
 
 Decisión: [ADR 0006](../../decisions/0006-cadenas-por-pista.md).
@@ -343,6 +352,7 @@ copia 8 frases por cada cambio de un paso; los comandos por paso ya son lo que p
 Se aplican en el secuenciador: una pista en mute (o fuera del solo, si hay alguno) no dispara notas y lo que tenía
 sostenido se suelta en el momento. Lo que ya sonaba termina su relajación. La audición con X sigue sonando en una
 pista en mute. Con la Mezcla (H9) se puede pasar a una ganancia suavizada si hace falta cortar las colas.
+**H9**: se dejó así (las colas y los envíos ya mandados terminan solos); la Mezcla solo agrega mute y solo editables.
 
 ### Disparo de un paso
 

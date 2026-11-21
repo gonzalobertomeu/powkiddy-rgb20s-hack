@@ -9,6 +9,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::instrument::{Instrument, default_kit};
+use crate::mix::{FxSettings, MasterSettings};
 
 pub const TRACKS: usize = 8;
 pub const PHRASE_STEPS: usize = 16;
@@ -404,6 +405,9 @@ pub struct Project {
     pub song: Song,
     pub chains: Box<[Option<Chain>]>,
     pub phrases: Box<[Option<Phrase>]>,
+    /// Delay y reverb de envío (H9).
+    pub fx: FxSettings,
+    pub master: MasterSettings,
 }
 
 impl Project {
@@ -422,6 +426,8 @@ impl Project {
             song: Song::default(),
             chains: vec![None; MAX_CHAINS].into_boxed_slice(),
             phrases: vec![None; MAX_PHRASES].into_boxed_slice(),
+            fx: FxSettings::default(),
+            master: MasterSettings::default(),
         };
         let mut row = [None; TRACKS];
         for (t, cell) in row.iter_mut().enumerate() {

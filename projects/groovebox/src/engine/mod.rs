@@ -1,5 +1,5 @@
 //! Motor de sonido (H2) y secuenciador (H3, H5): comandos de la interfaz, cabezales, bolsa de voces,
-//! instrumentos, mezcla y master.
+//! instrumentos, mezcla estéreo con envíos a delay y reverb, y master con limitador (H9).
 //!
 //! No depende de cpal: `audio.rs` lo llama desde el callback y `offline.rs` lo usa para
 //! renderizar a WAV y medir. Nada en `handle` ni en `render` asigna memoria, bloquea ni hace
@@ -7,22 +7,25 @@
 
 pub mod drum;
 pub mod dsp;
+pub mod fx;
 pub mod load;
 pub mod pool;
 pub mod sequencer;
 pub mod synth;
 
 use drum::{DrumSetup, DrumVoice};
-use dsp::{Smoother, soft_clip};
+use dsp::soft_clip;
+use fx::{BusFilter, Delay, Limiter, Ramp, Reverb, mix_into};
 pub use load::{LoadMeter, LoadReport};
 use pool::{Source, Voice, VoicePool, VoiceState};
 pub use sequencer::{HeadPos, PlayMode, Playhead};
 use sequencer::{PreviewEvent, Sequencer, Trigger, samples_per_step};
-use synth::{SynthSetup, SynthVoice};
+use synth::{SynthSetup, SynthVoice, VoiceMod};
 
 use crate::instrument::{Instrument, MAX_VOICES, Patch, default_kit, velocity_gain, volume_gain};
+use crate::mix::{FxSettings, MasterSettings, level_gain_f, pan_gains};
 use crate::model::{
-    ChainEntry, ChainId, GATE_INF, NoteSet, PhraseId, Step, TICKS_PER_STEP, TRACKS,
+    ChainEntry, ChainId, ChannelStrip, GATE_INF, NoteSet, PhraseId, Step, TICKS_PER_STEP, TRACKS,
 };
 
 pub const MAX_NOTES: usize = 4;
@@ -34,9 +37,22 @@ pub const BLOCK: usize = 32;
 /// Largo que se le da a una audición con largo INF (no hay "próxima nota"): 16 pasos.
 const AUDITION_INF_TICKS: u32 = 16 * TICKS_PER_STEP as u32;
 const TICKS_PER_BEAT: f32 = 4.0 * TICKS_PER_STEP as f32;
-/// Suavizado de volúmenes (pista y master).
+/// Suavizado de volúmenes, paneo, envíos y retornos.
 const GAIN_TAU: f32 = 0.010;
-const MASTER_GAIN: f32 = 1.0;
+/// Suavizado de los sticks: llegan al valor (o vuelven al guardado) en ~100 ms (spec-ui).
+const PERFORM_TAU: f32 = 0.030;
+/// Un stick al extremo suma o resta 64 al parámetro 0–127 (spec-ui, "Detalles de los sticks").
+const PERFORM_RANGE: f32 = 64.0;
+/// Octavas por unidad de corte (0–127 recorre 20 Hz–20 kHz, ~10 octavas).
+const CUTOFF_OCTAVES_PER_UNIT: f32 = 9.965_784 / 127.0;
+/// Medidores para la pantalla Mezcla: un reporte cada 1600 muestras (30 por segundo).
+const METER_FRAMES: usize = 1600;
+
+/// Destinos de los sticks (spec-ui, mapa global): izquierdo X/Y, derecho X/Y.
+pub const PERFORM_CUTOFF: usize = 0;
+pub const PERFORM_RESONANCE: usize = 1;
+pub const PERFORM_DELAY: usize = 2;
+pub const PERFORM_REVERB: usize = 3;
 
 /// Mensajes de la interfaz al motor (cola `rtrb`). Todo `Copy`: nada que liberar en el callback.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -48,10 +64,18 @@ pub enum Command {
     SetTempo(f32),
     /// Swing global en % (50–75; fuera de rango se recorta).
     SetSwing(u8),
+    /// Volumen, paneo, envíos, mute y solo de una pista.
     SetMix {
         track: u8,
-        mute: bool,
-        solo: bool,
+        strip: ChannelStrip,
+    },
+    SetFx(FxSettings),
+    SetMaster(MasterSettings),
+    /// Sticks (performance): desplazamientos en −1..=1 de corte, resonancia, envío a delay y
+    /// envío a reverb de una pista. Se suavizan en el motor; 0 vuelve al valor guardado.
+    Perform {
+        track: u8,
+        offsets: [f32; 4],
     },
     SetStep {
         phrase: PhraseId,
@@ -93,7 +117,28 @@ pub enum Command {
 pub enum Event {
     Load(LoadReport),
     Playhead(Playhead),
+    Meters(Meters),
 }
+
+/// Medidores de la pantalla Mezcla, cada `METER_FRAMES` muestras.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Meters {
+    /// Pico de cada pista (después del volumen y el paneo) y del master (a la salida).
+    pub peaks: [f32; TRACKS + 1],
+    /// Máximo de voces de cada pista en la ventana (sin los fundidos).
+    pub voices: [u8; TRACKS],
+    /// Máximo de voces de la bolsa en la ventana.
+    pub pool_voices: u8,
+    /// Menor ganancia del limitador en la ventana (1 = no limitó).
+    pub limiter_gain: f32,
+}
+
+/// Índices de `TrackState::gains`.
+const GAIN_L: usize = 0;
+const GAIN_R: usize = 1;
+const SEND_DELAY_L: usize = 2;
+const SEND_DELAY_R: usize = 3;
+const SEND_REVERB: usize = 4;
 
 #[derive(Clone, Copy, Debug)]
 enum Setup {
@@ -105,19 +150,56 @@ enum Setup {
 struct TrackState {
     instrument: Instrument,
     setup: Setup,
-    gain: Smoother,
-    mute: bool,
-    solo: bool,
+    strip: ChannelStrip,
+    /// Ganancias suavizadas: L, R, envío a delay L y R (después del paneo) y envío a reverb
+    /// (mono, después del volumen).
+    gains: [Ramp; 5],
+    /// Sticks suavizados (índices `PERFORM_*`).
+    perform: [Ramp; 4],
+    /// Filtro del stick izquierdo para las pistas sin filtro propio.
+    bus_filter: BusFilter,
 }
 
 impl TrackState {
     fn new(instrument: Instrument, sample_rate: f32) -> Self {
-        Self {
+        let mut state = Self {
             instrument,
             setup: prepare(&instrument, sample_rate),
-            gain: Smoother::new(volume_gain(instrument.volume), GAIN_TAU, sample_rate),
-            mute: false,
-            solo: false,
+            strip: ChannelStrip::default(),
+            gains: [Ramp::new(0.0, GAIN_TAU, sample_rate); 5],
+            perform: [Ramp::new(0.0, PERFORM_TAU, sample_rate); 4],
+            bus_filter: BusFilter::default(),
+        };
+        state.retarget();
+        for g in &mut state.gains {
+            g.settle();
+        }
+        state
+    }
+
+    /// Recalcula los objetivos de las ganancias (al cambiar el instrumento, la mezcla o un
+    /// stick). Con la pista centrada y en 100, L = R = el volumen del instrumento, exacto: el
+    /// audio sin mezclar es el mismo que antes del H9.
+    fn retarget(&mut self) {
+        let g = volume_gain(self.instrument.volume) * level_gain_f(f32::from(self.strip.volume));
+        let (pl, pr) = pan_gains(self.strip.pan);
+        let (l, r) = (g * pl, g * pr);
+        let send =
+            |base: u8, ramp: &Ramp| level_gain_f(f32::from(base) + PERFORM_RANGE * ramp.value);
+        let delay = send(self.strip.delay_send, &self.perform[PERFORM_DELAY]);
+        let reverb = send(self.strip.reverb_send, &self.perform[PERFORM_REVERB]);
+        let targets = [l, r, l * delay, r * delay, g * reverb];
+        for (ramp, t) in self.gains.iter_mut().zip(targets) {
+            ramp.target = t;
+        }
+    }
+
+    fn voice_mod(&self) -> VoiceMod {
+        VoiceMod {
+            cutoff_octaves: self.perform[PERFORM_CUTOFF].value
+                * PERFORM_RANGE
+                * CUTOFF_OCTAVES_PER_UNIT,
+            resonance: self.perform[PERFORM_RESONANCE].value * PERFORM_RANGE / 127.0,
         }
     }
 }
@@ -137,8 +219,23 @@ pub struct Engine {
     pool: VoicePool,
     /// Un buffer por pista; se mantiene en cero entre bloques.
     bufs: [[f32; BLOCK]; TRACKS],
-    mix: [f32; BLOCK],
-    master: Smoother,
+    /// Buses: suma L/R, envíos al delay (L/R) y a la reverb (mono), y salida de un efecto.
+    mix: [[f32; BLOCK]; 2],
+    delay_bus: [[f32; BLOCK]; 2],
+    reverb_bus: [f32; BLOCK],
+    fx_out: [[f32; BLOCK]; 2],
+    mods: [VoiceMod; TRACKS],
+    delay: Delay,
+    reverb: Reverb,
+    fx: FxSettings,
+    /// Retornos de delay y reverb.
+    returns: [Ramp; 2],
+    master: Ramp,
+    limiter: Limiter,
+    limiter_on: bool,
+    meters: Meters,
+    meter_frames: usize,
+    voice_counts: [u8; TRACKS],
     seq: Sequencer,
     /// Muestras renderizadas desde que se creó el motor: el reloj del secuenciador.
     frame: u64,
@@ -165,8 +262,24 @@ impl Engine {
             tracks: std::array::from_fn(|t| TrackState::new(kit[t].1, sample_rate)),
             pool: VoicePool::new(sample_rate),
             bufs: [[0.0; BLOCK]; TRACKS],
-            mix: [0.0; BLOCK],
-            master: Smoother::new(MASTER_GAIN, GAIN_TAU, sample_rate),
+            mix: [[0.0; BLOCK]; 2],
+            delay_bus: [[0.0; BLOCK]; 2],
+            reverb_bus: [0.0; BLOCK],
+            fx_out: [[0.0; BLOCK]; 2],
+            mods: [VoiceMod::default(); TRACKS],
+            delay: Delay::new(sample_rate),
+            reverb: Reverb::new(sample_rate),
+            fx: FxSettings::default(),
+            returns: [Ramp::new(0.0, GAIN_TAU, sample_rate); 2],
+            master: Ramp::new(1.0, GAIN_TAU, sample_rate),
+            limiter: Limiter::new(sample_rate),
+            limiter_on: MasterSettings::default().limiter,
+            meters: Meters {
+                limiter_gain: 1.0,
+                ..Meters::default()
+            },
+            meter_frames: 0,
+            voice_counts: [0; TRACKS],
             seq: Sequencer::new(samples_per_step(sample_rate, tempo_bpm)),
             frame: 0,
             voices_peak: 0,
@@ -175,6 +288,23 @@ impl Engine {
             #[cfg(test)]
             trigger_log: Vec::with_capacity(4096),
         }
+        .with_fx(FxSettings::default())
+    }
+
+    fn with_fx(mut self, fx: FxSettings) -> Self {
+        self.set_fx(fx);
+        for r in &mut self.returns {
+            r.settle();
+        }
+        self
+    }
+
+    fn set_fx(&mut self, fx: FxSettings) {
+        self.fx = fx;
+        self.delay.set(&fx.delay, self.tempo_bpm, self.sample_rate);
+        self.reverb.set(&fx.reverb, self.sample_rate);
+        self.returns[0].target = level_gain_f(f32::from(fx.delay.return_level));
+        self.returns[1].target = level_gain_f(f32::from(fx.reverb.return_level));
     }
 
     pub fn handle(&mut self, cmd: Command) {
@@ -186,21 +316,44 @@ impl Engine {
                 // Las voces que ya suenan conservan su copia de los parámetros.
                 state.instrument = instrument;
                 state.setup = prepare(&instrument, self.sample_rate);
-                state.gain.target = volume_gain(instrument.volume);
+                state.retarget();
             }
             Command::SetTempo(bpm) => {
                 if bpm.is_finite() {
                     self.tempo_bpm = bpm.clamp(20.0, 999.0);
                     let sps = samples_per_step(self.sample_rate, self.tempo_bpm);
                     self.seq.set_samples_per_step(sps, self.frame);
+                    // El delay sigue al tempo (se desliza al tiempo nuevo).
+                    self.delay
+                        .set(&self.fx.delay, self.tempo_bpm, self.sample_rate);
                 }
             }
             Command::SetSwing(swing) => self.seq.set_swing(swing),
-            Command::SetMix { track, mute, solo } => {
+            Command::SetMix { track, strip } => {
                 if let Some(state) = self.tracks.get_mut(usize::from(track)) {
-                    state.mute = mute;
-                    state.solo = solo;
-                    self.update_audible();
+                    let audible_changed =
+                        (state.strip.mute, state.strip.solo) != (strip.mute, strip.solo);
+                    state.strip = strip;
+                    state.retarget();
+                    if audible_changed {
+                        self.update_audible();
+                    }
+                }
+            }
+            Command::SetFx(fx) => self.set_fx(fx),
+            Command::SetMaster(m) => {
+                self.master.target = m.gain_linear();
+                self.limiter_on = m.limiter;
+            }
+            Command::Perform { track, offsets } => {
+                if let Some(state) = self.tracks.get_mut(usize::from(track)) {
+                    for (ramp, o) in state.perform.iter_mut().zip(offsets) {
+                        ramp.target = if o.is_finite() {
+                            o.clamp(-1.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                    }
                 }
             }
             Command::SetStep {
@@ -269,10 +422,10 @@ impl Engine {
     }
 
     fn update_audible(&mut self) {
-        let any_solo = self.tracks.iter().any(|t| t.solo);
+        let any_solo = self.tracks.iter().any(|t| t.strip.solo);
         let mut audible = [true; TRACKS];
         for (t, (a, state)) in audible.iter_mut().zip(&self.tracks).enumerate() {
-            *a = !state.mute && (!any_solo || state.solo);
+            *a = !state.strip.mute && (!any_solo || state.strip.solo);
             // Lo que queda sostenido en una pista que se apaga se suelta (sigue su relajación).
             if !*a {
                 self.pool.release_track(t as u8, false);
@@ -472,9 +625,30 @@ impl Engine {
         self.pool.is_idle()
     }
 
-    /// Llena `out` (intercalado, `channels` canales). Por ahora todo es mono: el mismo valor
-    /// en todos los canales (el paneo llega con la Mezcla, H9). Los pasos del secuenciador se
-    /// disparan en su muestra exacta dentro del buffer.
+    /// Medidores acumulados, cada `METER_FRAMES` muestras (para el evento `Meters`).
+    pub fn take_meters(&mut self) -> Option<Meters> {
+        if self.meter_frames < METER_FRAMES {
+            return None;
+        }
+        // Se descuenta (no se pone en 0): un reporte cada METER_FRAMES aunque no sea múltiplo
+        // del buffer.
+        self.meter_frames = (self.meter_frames - METER_FRAMES).min(METER_FRAMES);
+        let m = self.meters;
+        self.meters = Meters {
+            limiter_gain: 1.0,
+            ..Meters::default()
+        };
+        Some(m)
+    }
+
+    /// No hay nada que renderizar: ni voces ni colas de efectos.
+    fn is_quiet(&self) -> bool {
+        self.pool.in_use() == 0 && !self.delay.is_active() && !self.reverb.is_active()
+    }
+
+    /// Llena `out` (intercalado, `channels` canales): L y R en los dos primeros (en mono, el
+    /// promedio) y silencio en los demás. Los pasos del secuenciador se disparan en su muestra
+    /// exacta dentro del buffer.
     pub fn render(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
         let frames = out.len() / channels;
@@ -488,52 +662,179 @@ impl Engine {
             let chunk = &mut out[pos * channels..(pos + n) * channels];
             let voices = self.pool.in_use();
             self.voices_peak = self.voices_peak.max(voices);
-            if voices == 0 {
+            self.count_voices();
+            if self.is_quiet() {
                 chunk.fill(0.0);
-                self.master.settle();
-                for t in &mut self.tracks {
-                    t.gain.settle();
-                }
+                self.settle_all();
             } else {
                 self.render_block(n);
-                for (frame, &x) in chunk.chunks_exact_mut(channels).zip(&self.mix[..n]) {
-                    frame.fill(x);
+                let [l, r] = &self.mix;
+                for (frame, (&l, &r)) in chunk.chunks_exact_mut(channels).zip(l.iter().zip(r)) {
+                    match frame {
+                        [mono] => *mono = 0.5 * (l + r),
+                        [a, b, rest @ ..] => {
+                            *a = l;
+                            *b = r;
+                            rest.fill(0.0);
+                        }
+                        [] => {}
+                    }
                 }
             }
             pos += n;
             self.frame += n as u64;
+            self.meter_frames += n;
         }
         out[frames * channels..].fill(0.0);
     }
 
+    fn count_voices(&mut self) {
+        self.pool.count_by_track(&mut self.voice_counts);
+        let m = &mut self.meters;
+        let mut total = 0;
+        for (max, &c) in m.voices.iter_mut().zip(&self.voice_counts) {
+            *max = (*max).max(c);
+            total += c;
+        }
+        m.pool_voices = m.pool_voices.max(total);
+    }
+
+    /// Sin señal, los parámetros saltan a su valor (no hay nada que proteger de clicks).
+    fn settle_all(&mut self) {
+        self.master.settle();
+        for r in &mut self.returns {
+            r.settle();
+        }
+        for t in &mut self.tracks {
+            // Un stick movido en silencio cambia los envíos: se recalculan (con `powf`) solo
+            // entonces; si no, el motor parado no gasta nada acá.
+            if !t.perform.iter().all(Ramp::is_settled) {
+                for p in &mut t.perform {
+                    p.settle();
+                }
+                t.retarget();
+            }
+            for g in &mut t.gains {
+                g.settle();
+            }
+        }
+        self.limiter.reset();
+    }
+
+    /// ~4 operaciones por muestra y pista sin envíos, ~8 con los dos; los efectos y el master
+    /// aparte (ver dsp.md, "Costo").
     fn render_block(&mut self, n: usize) {
-        let mask = self.pool.render(&mut self.bufs, n);
-        let mix = &mut self.mix[..n];
-        mix.fill(0.0);
+        for (m, t) in self.mods.iter_mut().zip(&mut self.tracks) {
+            if !t.perform.iter().all(Ramp::is_settled) {
+                for p in &mut t.perform {
+                    p.advance(n);
+                }
+                t.retarget();
+            }
+            *m = t.voice_mod();
+        }
+        let mask = self.pool.render(&mut self.bufs, n, &self.mods);
+        for bus in self.mix.iter_mut().chain(&mut self.delay_bus) {
+            bus[..n].fill(0.0);
+        }
+        self.reverb_bus[..n].fill(0.0);
+        let (mut to_delay, mut to_reverb) = (false, false);
+        let sr = self.sample_rate;
         for (t, (state, buf)) in self.tracks.iter_mut().zip(&mut self.bufs).enumerate() {
             if mask & (1 << t) == 0 {
-                state.gain.settle();
+                for g in &mut state.gains {
+                    g.settle();
+                }
                 continue;
             }
             let buf = &mut buf[..n];
-            if state.gain.is_settled() {
-                let g = state.gain.value;
-                for (m, x) in mix.iter_mut().zip(buf.iter()) {
-                    *m += x * g;
-                }
-            } else {
-                for (m, x) in mix.iter_mut().zip(buf.iter()) {
-                    *m += x * state.gain.next();
-                }
+            if !matches!(state.setup, Setup::Synth(_)) {
+                let p = &state.perform;
+                state.bus_filter.process(
+                    buf,
+                    p[PERFORM_CUTOFF].value,
+                    p[PERFORM_RESONANCE].value,
+                    sr,
+                );
             }
+            let g = &mut state.gains;
+            let level = buf.iter().fold(0.0f32, |m, x| m.max(x.abs()))
+                * g[GAIN_L].value.max(g[GAIN_R].value);
+            self.meters.peaks[t] = self.meters.peaks[t].max(level);
+            let [mix_l, mix_r] = &mut self.mix;
+            mix_into(&mut mix_l[..n], buf, &mut g[GAIN_L]);
+            mix_into(&mut mix_r[..n], buf, &mut g[GAIN_R]);
+            to_delay |= !g[SEND_DELAY_L].is_zero() || !g[SEND_DELAY_R].is_zero();
+            to_reverb |= !g[SEND_REVERB].is_zero();
+            let [delay_l, delay_r] = &mut self.delay_bus;
+            mix_into(&mut delay_l[..n], buf, &mut g[SEND_DELAY_L]);
+            mix_into(&mut delay_r[..n], buf, &mut g[SEND_DELAY_R]);
+            mix_into(&mut self.reverb_bus[..n], buf, &mut g[SEND_REVERB]);
             buf.fill(0.0);
         }
+        self.render_fx(n, to_delay, to_reverb);
+        self.render_master(n);
+    }
+
+    fn render_fx(&mut self, n: usize, to_delay: bool, to_reverb: bool) {
+        let [out_l, out_r] = &mut self.fx_out;
+        let [mix_l, mix_r] = &mut self.mix;
+        if to_delay || self.delay.is_active() {
+            let [in_l, in_r] = &self.delay_bus;
+            self.delay
+                .process(&in_l[..n], &in_r[..n], &mut out_l[..n], &mut out_r[..n]);
+            let mut ret = self.returns[0];
+            mix_into(&mut mix_l[..n], &out_l[..n], &mut ret);
+            mix_into(&mut mix_r[..n], &out_r[..n], &mut self.returns[0]);
+        } else {
+            self.returns[0].settle();
+        }
+        if to_reverb || self.reverb.is_active() {
+            self.reverb
+                .process(&self.reverb_bus[..n], &mut out_l[..n], &mut out_r[..n]);
+            let mut ret = self.returns[1];
+            mix_into(&mut mix_l[..n], &out_l[..n], &mut ret);
+            mix_into(&mut mix_r[..n], &out_r[..n], &mut self.returns[1]);
+        } else {
+            self.returns[1].settle();
+        }
+    }
+
+    /// Ganancia master → limitador (si está activo) → soft clip. ~12 operaciones por frame.
+    fn render_master(&mut self, n: usize) {
+        let [l, r] = &mut self.mix;
+        let (l, r) = (&mut l[..n], &mut r[..n]);
+        let (mut g, inc) = self.master.advance(n);
+        if inc == 0.0 {
+            if g != 1.0 {
+                for (x, y) in l.iter_mut().zip(r.iter_mut()) {
+                    *x *= g;
+                    *y *= g;
+                }
+            }
+        } else {
+            for (x, y) in l.iter_mut().zip(r.iter_mut()) {
+                g += inc;
+                *x *= g;
+                *y *= g;
+            }
+        }
+        if self.limiter_on {
+            self.limiter.process(l, r);
+            self.meters.limiter_gain = self.meters.limiter_gain.min(self.limiter.min_gain);
+            self.limiter.min_gain = 1.0;
+        }
         let mut peak = self.peak;
-        for m in mix.iter_mut() {
-            *m = soft_clip(*m * self.master.next());
-            peak = peak.max(m.abs());
+        let mut master_peak = self.meters.peaks[TRACKS];
+        for (x, y) in l.iter_mut().zip(r.iter_mut()) {
+            *x = soft_clip(*x);
+            *y = soft_clip(*y);
+            let p = x.abs().max(y.abs());
+            peak = peak.max(p);
+            master_peak = master_peak.max(p);
         }
         self.peak = peak;
+        self.meters.peaks[TRACKS] = master_peak;
     }
 }
 

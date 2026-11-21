@@ -484,6 +484,19 @@ Los medidores de "nivel" son barras dibujadas (pico con caída) y la fila "voces
 | L1 / R1 | Canal − / + | — | — | Octava − / + |
 | L2 / R2 | Sin función | — | — | Tempo − / + |
 
+**Implementado (H9)** según el mockup, con estos desvíos:
+- **B solo no sale de la Mezcla**: el gesto "cancelar" llega al apretar B, antes de la cruz, así que salir con B haría
+  imposible B + cruz (los saltos de la tabla). Se vuelve con Select + ↑, como dice la tabla.
+- La columna MASTER solo tiene "volumen", que es la **ganancia master** en dB (la misma de la fila MASTER de abajo).
+- A + cruz sobre mute, solo y limitador también los alterna. El tiempo del delay es una lista: cualquier dirección ±1.
+- Con 12×24 los canales tienen 5 columnas (nombres de 4 letras, filas `vol`, `pan`, `dly`, `rev`) y las filas de
+  efectos muestran solo los valores; la línea de información (debajo) nombra el parámetro del cursor con sus unidades
+  ("TIEMPO DEL DELAY 3/16 (375 ms a 120 BPM)"). Con 8×16, si se mueve un stick, otra línea muestra su efecto.
+- La fila MASTER muestra la reducción del limitador en dB mientras limita.
+- **Sticks** (mapa global): en las pistas de percusión y sample, que no tienen filtro, el stick izquierdo mueve un
+  filtro de bus (pasa-bajos a la izquierda, pasa-altos a la derecha); en el sinte, el corte y la resonancia de cada
+  voz. Funcionan en todas las pantallas, sobre la pista actual.
+
 ### 7. Proyecto
 
 **Propósito:** archivo, tempo y ajustes.

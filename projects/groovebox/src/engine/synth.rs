@@ -16,6 +16,15 @@ const ATTACK_TARGET: f32 = 1.2;
 const GAIN_TAU: f32 = 0.002;
 const TINY: f32 = 1.0e-6;
 
+/// Modulación de performance de una pista (stick izquierdo), ya suavizada por el motor.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VoiceMod {
+    /// Octavas que se suman al corte (±5 con el stick al extremo: ±64 de 0–127).
+    pub cutoff_octaves: f32,
+    /// Se suma a la resonancia en 0–1 (±0,5 con el stick al extremo).
+    pub resonance: f32,
+}
+
 pub fn midi_to_hz(note: u8) -> f32 {
     440.0 * ((f32::from(note) - 69.0) / 12.0).exp2()
 }
@@ -29,6 +38,8 @@ pub struct SynthSetup {
     release: f32,
     cutoff_hz: f32,
     k: f32,
+    /// Resonancia en 0–1 (para sumarle el stick).
+    resonance: f32,
     env_octaves: f32,
     filter_k: f32,
     gain_coef: f32,
@@ -50,6 +61,7 @@ impl SynthSetup {
             release: one_pole_coef(t60(p.release), sr),
             cutoff_hz: cutoff_hz(p.cutoff),
             k: resonance_k(p.resonance),
+            resonance: f32::from(p.resonance.min(127)) / 127.0,
             env_octaves: 6.0 * bipolar(p.filter_env),
             filter_k: super::dsp::decay_coef(env_seconds(p.filter_decay), sr),
             gain_coef: one_pole_coef(GAIN_TAU, sr),
@@ -135,14 +147,20 @@ impl SynthVoice {
         }
     }
 
-    /// Suma la voz en `out`. Devuelve false cuando terminó la relajación.
-    pub fn render(&mut self, out: &mut [f32]) -> bool {
+    /// Suma la voz en `out`. Devuelve false cuando terminó la relajación. `m` es el
+    /// desplazamiento del stick izquierdo para la pista (en el centro no cambia nada).
+    pub fn render(&mut self, out: &mut [f32], m: VoiceMod) -> bool {
         if self.env.stage == Stage::Off {
             return false;
         }
         let s = self.setup;
-        let cutoff = self.cutoff * (s.env_octaves * self.filter_env).exp2();
-        self.svf.set(cutoff, s.k, s.sample_rate);
+        let cutoff = self.cutoff * (s.env_octaves * self.filter_env + m.cutoff_octaves).exp2();
+        let k = if m.resonance == 0.0 {
+            s.k
+        } else {
+            2.0 - 1.95 * (s.resonance + m.resonance).clamp(0.0, 1.0)
+        };
+        self.svf.set(cutoff, k, s.sample_rate);
         self.filter_env *= s.filter_k.powi(out.len() as i32);
         if self.filter_env < TINY {
             self.filter_env = 0.0;

@@ -2,7 +2,8 @@
 
 Groovebox para la Powkiddy RGB20S. Diseño y hitos en [docs/solutions/groovebox](../../docs/solutions/groovebox/README.md).
 
-Estado: **H10** (selección, copiar, cortar y pegar en Grilla, Frase, Canción, Cadena e Instrumento) sobre **H4** (swing, voces por pista editables y notas largas superpuestas, tempo y swing en Proyecto, X en Canción
+Estado: **H9** (mezcla estéreo: volumen, paneo, envíos a delay y reverb, limitador, pantalla Mezcla y sticks en vivo)
+después de **H10** (selección, copiar, cortar y pegar en Grilla, Frase, Canción, Cadena e Instrumento) sobre **H4** (swing, voces por pista editables y notas largas superpuestas, tempo y swing en Proyecto, X en Canción
 y Cadena toca la frase entera una vez) completado después de **H6** (guardar y abrir proyectos en RON: con esto se
 cumple el objetivo mínimo del MVP, "un beat de 4 compases guardado") sobre **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
 frase, Start contextual, pantallas Canción y Cadena editables, seguir reproducción) sobre **H3** (secuenciador, edición
@@ -73,7 +74,16 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
   Lo seleccionado se ve con fondo azul y el pie muestra **SELECCIÓN**, el tamaño ("3 pistas × 8 pasos") y los
   controles; copiar, cortar y pegar dejan un mensaje con cuántos elementos. Detalle abajo, en "Modo selección".
 - **Instrumento (H4, parcial)**: tipo de la pista y **voces** (A + cruz ±1, A + B por defecto). El resto llega en H8.
-- **Mezcla**: pendiente.
+- **Mezcla (H9)**: las 8 pistas y el master con medidor de pico (con caída), voces en uso / límite, **volumen**,
+  **paneo**, **envío a delay**, **envío a reverb**, **mute** y **solo**; abajo **DELAY** (tiempo sincronizado al tempo,
+  realimentación, tono, ancho/ping-pong, retorno), **REVERB** (tamaño = largo de la cola, amortiguación, predelay,
+  retorno) y **MASTER** (limitador SÍ/NO con la reducción en dB, ganancia). Una línea de información nombra el
+  parámetro del cursor con sus unidades. Todo se edita en vivo, marca cambios sin guardar y se guarda en el proyecto
+  (`mix`, `fx`, `master`). Diseño del audio en [dsp.md](../../docs/solutions/groovebox/dsp.md#mezcla-efectos-y-master-h9).
+- **Sticks (H9)**, en cualquier pantalla y sobre la pista actual: el **izquierdo** mueve el corte (X) y la resonancia
+  (Y) del filtro (en el sinte, el de cada voz; en percusión, un filtro de bus: pasa-bajos a la izquierda, pasa-altos a
+  la derecha); el **derecho**, el envío a delay (X) y a reverb (Y). Se suman a lo guardado y, al soltar, vuelven en
+  ~100 ms. No se graban.
 - **Proyecto (H6 y H4)**: nombre (renombrar), **tempo** y **swing** editables, **GUARDAR**, **GUARDAR COMO...**, **CARGAR...** y **NUEVO**; los ajustes
   (fuente 8×16 / 12×24, audición al editar, seguir reproducción), SALIR, la carpeta de datos y, si entran (con la
   fuente chica), una **prueba de controles** (botones apretados y posición de los sticks) y una muestra de texto en
@@ -83,6 +93,8 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
 - **Audición**: X hace sonar el paso (o el instrumento con la última nota) con el instrumento real de la pista; poner y
   editar notas también suena. En la Canción y la Cadena, X toca la **frase entera una vez** (vista previa del motor, con
   reloj propio: suena aunque el secuenciador esté parado; Start la corta). Los acordes disparan varias voces; el largo (LARGO) se respeta al tempo actual (INF = 16 pasos).
+- **Master (H9)**: salida estéreo; ganancia → limitador de picos (0 dBFS, sin anticipación,
+  [ADR 0018](../../docs/decisions/0018-limitador-sin-anticipacion-antes-del-soft-clip.md)) → soft clip.
 - **Motor (H2)**: bolsa de 16 voces + 4 de fundido con las reglas de robo del ADR 0007; kit por defecto: BOMBO, CAJA,
   HH-CER, HH-ABI y PALMAS sintetizados, SAMPLE en silencio (llega en H7), BAJO (sierra + filtro, mono con legato) y
   SINTE (sierra + filtro, 4 voces). Soft clip en el master, volúmenes suavizados, flush-to-zero en el hilo de audio.
@@ -118,6 +130,8 @@ Mientras se mantiene Select, el minimapa se agranda.
 | Proyecto: tempo | **A + ←/→** ±0,1 BPM; **A + ↑/↓** ±1 BPM (×4 tras 1 s); **A + B** 120 BPM |
 | Proyecto: swing | **A + ←/→** ±1 %; **A + ↑/↓** ±5 %; **A + B** recto (50 %) |
 | Instrumento | **A + cruz** voces ±1 (1–8); **A + B** voces por defecto; X escuchar; L1/R1 pista; Start loop de la frase |
+| Mezcla (H9) | Cruz: canal y fila (en las filas de efectos, el parámetro; la columna MASTER solo en volumen). **A + cruz** cambia: ←/→ ±1, ↑/↓ ±10 (ganancia master ±1 / ±6 dB; tiempo del delay: la lista); **A** alterna mute, solo y limitador; **A + B** valor por defecto; **B + cruz** primer canal / MASTER, primera / última fila; X escuchar el canal; Select + X / Y mute / solo; L1/R1 canal; **Select + ↑ vuelve** (B solo no sale: B + cruz salta); Start canción, Select + Start loop de la sección |
+| Sticks (todas las pantallas) | Izquierdo: X corte, Y resonancia de la pista actual; derecho: X envío a delay, Y envío a reverb. Simulador: `I J K L` y `8 4 2 6` del teclado numérico |
 | Editor de nombres | ←/→ mover (también con A apretado); **A + ↑/↓** cambiar la letra (también ↑/↓ solos); en el hueco del final, agregar; B + ←/→ principio o final; **A + B** borrar; **Start** aceptar; B cancelar |
 | Cargar proyecto | ↑/↓ mover; B + ↑/↓ de a 10; **A** (o →) abrir; B cancelar |
 | Diálogo de cambios sin guardar | **Start** guardar y seguir; **A** seguir sin guardar; **B** cancelar |
@@ -267,7 +281,7 @@ just bench        # costo del motor, nativo en release (ver abajo)
 Subcomandos sin ventana ni audio (sirven también con `just run-arm`):
 
 ```sh
-groovebox render [carpeta]   # h5-cancion.wav, h4-swing-voces.wav, h3-beat.wav, h2-kit.wav y h2-robo.wav (48 kHz, 16 bits, estéreo)
+groovebox render [carpeta]   # h9-mezcla.wav, h5-cancion.wav, h4-swing-voces.wav, h3-beat.wav, h2-kit.wav y h2-robo.wav (48 kHz, 16 bits, estéreo)
 groovebox bench [segundos]   # bolsa llena, demo en loop de secciones y en modo canción, secuenciador solo, motor vacío y percusión
 just run-arm bench 5         # lo mismo emulado: solo para comparar, no es el número de la consola
 ```
@@ -326,6 +340,11 @@ echo basura > /tmp/gb-datos/proyectos/beat_01/proyecto.ron
 GROOVEBOX_SCRIPT=scripts/demo-h6-bak.txt target/debug/groovebox
 ```
 
+[`scripts/demo-h9.txt`](scripts/demo-h9.txt) (con `GROOVEBOX_DEMO=1`, `GROOVEBOX_AUDIO=null` y una `GROOVEBOX_DATA` de
+prueba): la Mezcla parada y sonando (medidores y voces), el HH-CER a 090 / L30 / reverb 020, envíos del SINTE y mute
+de las PALMAS, la ganancia master a +6 dB con el limitador trabajando, la fila DELAY editada, los dos sticks movidos
+sobre el BAJO (orden nueva del guion: `stick left|right x y`, en %) y la Mezcla con la fuente de 12×24 (8 capturas).
+
 [`scripts/demo-h10.txt`](scripts/demo-h10.txt) ("variaciones rápidas", con `GROOVEBOX_DEMO=1` y
 `GROOVEBOX_AUDIO=null`): selección de 3 pistas × 8 pasos en la Grilla, copiada y pegada en la segunda mitad de la
 sección 4, el SINTE cortado y vuelto a pegar, la columna VEL de la Frase copiada a otra sección, la cadena del SINTE
@@ -341,6 +360,10 @@ El proyecto demo (`src/demo.rs`) es una canción de 3 filas: **A** (4 compases: 
 +3). En la fila 2 los hi-hats cerrados tienen una cadena de 3 frases y las palmas de 2: la fila sale marcada con `!`
 y esas pistas vuelven a la fila 0 antes que el resto. SAMPLE no tiene cadenas.
 
+- `h9-mezcla.wav` (H9): la canción demo en modo canción, **mezclada** (HH en L30/R30, palmas y SINTE con delay y
+  reverb, caja con reverb, master a +4 dB: el limitador trabaja), 12 compases y 4 s de colas: 1–4 quieto, 5–8 el
+  stick izquierdo barre el filtro del BAJO de cerrado a abierto con resonancia, 9–10 el stick derecho "tira" el SINTE
+  al delay y a la reverb, 11–12 el filtro de bus cierra los HH abiertos. 28 s.
 - `h5-cancion.wav`: la canción en modo canción desde la fila 0, 10 frases (lo que tarda la pista más larga en recorrer
   el bloque; las palmas y los hi-hats ya volvieron a la fila 0) y Stop.
 - `h3-beat.wav`: las 4 secciones de la fila 0, cada una en loop 2 vueltas (Select + Start en cada una) y Stop.
@@ -350,6 +373,9 @@ y esas pistas vuelven a la fila 0 antes que el resto. SAMPLE no tiene cadenas.
   66 % con el SINTE en **1 voz** (legato: las notas ya no se superponen). 16,4 s.
 
 Todos salen idénticos byte a byte con el binario nativo y con el aarch64 emulado (`just run-arm render`).
+Con el H9, `h2-kit` y `h4-swing-voces` no cambiaron; `h3-beat` y `h5-cancion` sí, porque la demo pasaba de 0 dBFS
+antes del soft clip y ahora la recorta el limitador (pico −1,1 → −2,2 dBFS); `h2-robo` difiere en ≤ 6 LSB durante los
+primeros 170 ms (el cambio de volumen inicial se suaviza por bloque en lugar de por muestra).
 
 ### Batería, volumen y mono/estéreo
 
@@ -389,17 +415,20 @@ un renombrado (`printf ... > st.n && mv st.n st`).
 | `src/modal.rs` | Editor de nombres, navegador de proyectos y diálogos (estado y edición) |
 | `src/script.rs` | Guion de input |
 | `src/selection.rs` | Modo selección y portapapeles (H10): áreas por pantalla, copiar, cortar y pegar sobre el proyecto (funciones puras) y los gestos |
-| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), modales de archivo (`files.rs`), resaltado y pie de la selección (`selection.rs`) |
+| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), Mezcla (`mix.rs`), modales de archivo (`files.rs`), resaltado y pie de la selección (`selection.rs`) |
 | `src/audio.rs` | Salida con cpal (48 kHz f32 preferido) o backend nulo; `Processor`: lo que corre en el callback (comandos, render, conversión, medición, eventos de carga y cabezales) |
 | `../rgb20s-common` | Batería y estado del servicio de audio (compartido con el launcher) |
-| `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó |
+| `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó (pasos, mezcla, efectos, master...); `PerformSender`: los sticks |
+| `src/mix.rs` | Ajustes de delay, reverb y master (también son el formato de archivo), leyes de nivel y paneo, mapeos a unidades |
+| `src/mixer.rs` | Pantalla Mezcla: cursor, edición, línea de información y medidores con caída |
 | `src/demo.rs` | Proyecto de demostración (render, bench y `GROOVEBOX_DEMO=1`) |
-| `src/engine/mod.rs` | `Engine`: comandos, eventos, render con disparos en la muestra exacta, `note_on`, mezcla por pista, master con soft clip. Sin cpal |
+| `src/engine/mod.rs` | `Engine`: comandos, eventos, render con disparos en la muestra exacta, `note_on`, mezcla estéreo con envíos, efectos, master con limitador y soft clip, medidores. Sin cpal |
 | `src/engine/sequencer.rs` | Secuenciador: copia de frases, cadenas y canción (`SongData`), regla de bloques (`next_position`), reloj con swing, cabezales por pista, modos de reproducción, vista previa de una frase |
 | `src/engine/seq_tests.rs` | Tests del secuenciador (tiempos exactos, deriva, tempo, gate, INF, edición en vivo, mute/solo, cabezales, cadenas, canción, bloques, desalineación, modos, swing, voces superpuestas, vista previa) |
 | `src/engine/pool.rs` | Bolsa de voces y ranuras de fundido, reglas de robo |
 | `src/engine/drum.rs`, `synth.rs` | Percusión sintetizada y voz sustractiva |
-| `src/engine/dsp.rs` | SVF TPT, PolyBLEP, seno polinómico, xorshift, soft clip, suavizado, flush-to-zero |
+| `src/engine/dsp.rs` | SVF TPT, PolyBLEP, seno polinómico, xorshift, soft clip, flush-to-zero |
+| `src/engine/fx.rs` | H9: rampas de parámetros, delay estéreo, reverb FDN, limitador, filtro de bus del stick |
 | `src/engine/load.rs` | Medidor de carga (CPU promedio y pico por ventana de 0,5 s) |
 | `src/engine/tests.rs` | Tests del motor (envolventes, robo sin clicks, aliasing, determinismo, sin asignaciones) |
 | `src/instrument.rs` | Parámetros de instrumento en 0–127, mapeos de la spec y kit por defecto |
@@ -410,7 +439,7 @@ un renombrado (`printf ... > st.n && mv st.n st`).
 
 ## Dependencias
 
-H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan dependencias. H6 agrega `ron`.
+H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan dependencias. H6 agrega `ron`. H9 no agrega dependencias.
 
 | Crate | Por qué |
 |---|---|
@@ -424,6 +453,13 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan d
 | `ron 0.12` | Proyecto y `config.ron` en RON ([ADR 0004](../../docs/decisions/0004-formato-de-proyecto-ron.md)); trae `bitflags`, `typeid` y `unicode-ident` |
 
 ## Desvíos respecto de la spec
+
+- **Mezcla (H9)**: B solo no sale de la Mezcla (se vuelve con Select + ↑) para que B + cruz pueda saltar; la columna
+  MASTER solo tiene la ganancia; A + cruz también alterna mute, solo y limitador; el stick izquierdo en percusión y
+  sample mueve un filtro de bus (no tienen filtro propio); mute y solo siguen en el secuenciador (no son ganancia); el
+  delay usa 2^18 muestras (un compás desde 44 BPM); el limitador es sin anticipación y va delante del soft clip
+  (ADR 0018, propuesta); "tamaño" de la reverb = largo de la cola. Detalle en
+  [spec-ui](../../docs/solutions/groovebox/spec-ui.md#6-mezcla) y [dsp.md](../../docs/solutions/groovebox/dsp.md#mezcla-efectos-y-master-h9).
 
 - **Selección (H10)**: la columna FRA de la Grilla no se selecciona (Y ahí toma la pista entera); para copiar números
   de frase está la Cadena. En la Cadena se seleccionan posiciones enteras (frase y transposición). El "bloque" de la
@@ -477,16 +513,22 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan d
 - **X en la Grilla y la Frase** suena con la transposición de la entrada de cadena (lo que se oye al reproducir).
 - **Mute (H3)**: se aplica en el secuenciador (la pista no dispara y suelta lo sostenido), no como ganancia 0: las colas
   de lo que ya sonaba terminan solas y la audición con X sigue sonando en una pista en mute (para editarla). Con la
-  Mezcla (H9) puede pasar a ser ganancia.
+  Mezcla (H9) puede pasar a ser ganancia (en el H9 se dejó así).
 - **Cambiar de sección con L2/R2 mientras suena** no mueve la reproducción; con "seguir reproducción", la vista vuelve
   a la sección del cabezal cuando este cambia de sección.
 - **Motor (H2)**: la spec de producto pedía solo un bombo; se hizo la base completa (bolsa de voces, 5 percusiones y sinte
-  mínimo). Del sinte faltan sub, ruido, ancho de pulso y LFO (H8). Salida mono hasta la Mezcla (H9). El modelo guarda el
+  mínimo). Del sinte faltan sub, ruido, ancho de pulso y LFO (H8). Salida estéreo desde el H9. El modelo guarda el
   instrumento de cada pista (`Track::instrument`; `kind()` y las voces salen de ahí).
 - **Ranuras de fundido**: 16 en lugar de las 4 del ADR 0007 ([ADR 0013](../../docs/decisions/0013-ranuras-de-fundido.md), aceptado):
   sin cortes en seco cuando varias pistas polifónicas cambian de acorde a la vez.
 
 ## Pendientes para la consola (device-ops)
+
+- H9: `groovebox bench` con el binario nuevo (escenarios "bolsa llena + FX", "demo mezclada" y los tres efectos
+  solos, con la frecuencia de la CPU); la CPU que muestra la app con la demo mezclada sonando y la Mezcla en pantalla
+  (redibuja ~30 veces por segundo por los medidores). Con auriculares: escuchar `h9-mezcla.wav` y la Mezcla (paneo,
+  ping-pong, cola de la reverb, si se nota el ataque del limitador). Con el parlante: que lo paneado a la derecha no se
+  pierda. Mover los sticks reales: zona muerta, ruido del eje, que vuelvan al centro sin dejar el filtro movido.
 
 - H4: escuchar el swing (Proyecto → swing 66 %, Select + Start con la demo) y las notas largas del SINTE con 4 y con 1
   voz (Instrumento); probar X en la Canción con algo sonando y parado. `groovebox bench` no cambió (el swing es un

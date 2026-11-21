@@ -4,6 +4,7 @@
 mod files;
 mod font;
 mod grid;
+mod mix;
 mod phrase;
 mod screens;
 mod selection;
@@ -520,7 +521,7 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
         Screen::Chain => screens::chain(&mut p, app, view)?,
         Screen::Project => screens::project(&mut p, app, view)?,
         Screen::Instrument => screens::instrument(&mut p, app, view)?,
-        Screen::Mix => screens::pending(&mut p, app, view)?,
+        Screen::Mix => mix::draw(&mut p, app, view)?,
     }
     if app.modal.is_some() {
         files::confirm(&mut p, app)?;

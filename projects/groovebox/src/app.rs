@@ -5,6 +5,7 @@
 use crate::engine::{HeadPos, LoadReport, PlayMode, Playhead};
 use crate::gestures::{Dir, Gesture};
 use crate::instrument::{MAX_VOICES, default_voices};
+use crate::mixer::{MeterView, MixCursor};
 use crate::modal::{BROWSER_PAGE, Browser, Confirm, Modal, NameEditor, NamePurpose, Then};
 use crate::model::{
     CHAIN_LEN, ChainId, Chord, DEFAULT_GATE, DEFAULT_TEMPO, DEFAULT_VELOCITY, EditError,
@@ -206,6 +207,10 @@ pub struct App {
     pub phrase_col: PhraseCol,
     pub chain_col: ChainCol,
     pub project_item: usize,
+    /// Cursor de la Mezcla (el canal es `track`).
+    pub mix: MixCursor,
+    /// Medidores de la Mezcla, con caída (los alimenta el motor).
+    pub meters: MeterView,
     pub memory: [TrackMemory; TRACKS],
     pub octave: u8,
     pub last_phrase: Option<PhraseId>,
@@ -284,6 +289,8 @@ impl App {
             phrase_col: PhraseCol::Note,
             chain_col: ChainCol::Phrase,
             project_item: ProjectItem::Save.index(),
+            mix: MixCursor::default(),
+            meters: MeterView::default(),
             memory: [memory; TRACKS],
             octave: DEFAULT_OCTAVE,
             last_phrase: None,
@@ -520,6 +527,7 @@ impl App {
             }
             Gesture::Track(d) if self.screen != Screen::Project => {
                 self.track = step_by(self.track, d, TRACKS - 1);
+                self.mix.master = false;
                 None
             }
             _ => match self.screen {
@@ -528,6 +536,15 @@ impl App {
                 Screen::Chain => self.handle_chain(g, just_inserted),
                 Screen::Phrase => self.handle_phrase(g),
                 Screen::Project => self.handle_project(g),
+                // B solo no sale de la Mezcla: B + cruz salta (spec-ui, tabla de la Mezcla) y el
+                // gesto Cancel llega al apretar B, antes de la cruz. Se vuelve con Select + ↑.
+                Screen::Mix => match g {
+                    Gesture::Listen => self.listen(None),
+                    _ => {
+                        self.handle_mix(g);
+                        None
+                    }
+                },
                 _ => self.handle_other(g),
             },
         }
@@ -1249,7 +1266,7 @@ impl App {
         None
     }
 
-    /// Instrumento (por ahora solo "voces", H4) y Mezcla (pendiente).
+    /// Instrumento (por ahora solo "voces", H4).
     fn handle_other(&mut self, g: Gesture) -> Option<Audition> {
         match g {
             Gesture::Edit { dir, .. } if self.screen == Screen::Instrument => {
@@ -1269,10 +1286,6 @@ impl App {
                 } else {
                     self.project.prev_section(self.section)
                 };
-                None
-            }
-            Gesture::Cancel if self.screen == Screen::Mix => {
-                self.go(self.origin);
                 None
             }
             _ => None,

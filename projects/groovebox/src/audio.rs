@@ -332,6 +332,10 @@ impl Processor {
         {
             self.pending_playhead = None;
         }
+        if let Some(m) = self.engine.take_meters() {
+            // Como la carga: si la interfaz no lee, se pierde.
+            let _ = self.events.push(Event::Meters(m));
+        }
         let voices = self.engine.take_voices_peak();
         let notes = self.engine.take_notes_started();
         if let Some(report) = self.meter.record(start.elapsed(), frames, voices, notes) {
@@ -348,6 +352,8 @@ impl Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TRACKS_AND_MASTER: usize = crate::model::TRACKS + 1;
 
     #[test]
     fn callback_path_does_not_allocate_and_reports_load() {
@@ -377,12 +383,23 @@ mod tests {
         assert_eq!(allocs, 0);
         assert_eq!(stats.callbacks.load(Ordering::Relaxed), 200);
         // 200 × 256 frames = 1,07 s: dos reportes.
-        let mut reports = 0;
-        while let Ok(Event::Load(r)) = ev_rx.pop() {
-            assert!(r.cpu_avg > 0.0 && r.voices_max > 0 && r.frames == 256);
-            reports += 1;
+        let (mut reports, mut meters) = (0, 0);
+        while let Ok(ev) = ev_rx.pop() {
+            match ev {
+                Event::Load(r) => {
+                    assert!(r.cpu_avg > 0.0 && r.voices_max > 0 && r.frames == 256);
+                    reports += 1;
+                }
+                Event::Meters(m) => {
+                    assert!(m.pool_voices > 0 && m.peaks[TRACKS_AND_MASTER - 1] > 0.0);
+                    meters += 1;
+                }
+                Event::Playhead(_) => {}
+            }
         }
         assert_eq!(reports, 2);
+        // Un reporte de medidores cada 1600 frames: 51 200 / 1600.
+        assert_eq!(meters, 32);
     }
 
     /// El camino completo de la audición: gesto X → `Audition` → comando → callback → reporte.

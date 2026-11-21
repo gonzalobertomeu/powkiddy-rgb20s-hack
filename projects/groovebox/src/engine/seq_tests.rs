@@ -273,7 +273,14 @@ fn mute_and_solo_silence_tracks_in_playback() {
         }
     }
     e.handle(Command::Play(SEC0));
-    let mix = |e: &mut Engine, track, mute, solo| e.handle(Command::SetMix { track, mute, solo });
+    let mix = |e: &mut Engine, track, mute, solo| {
+        let strip = ChannelStrip {
+            mute,
+            solo,
+            ..ChannelStrip::default()
+        };
+        e.handle(Command::SetMix { track, strip })
+    };
 
     mix(&mut e, 0, true, false);
     render(&mut e, 96_000, 256);
@@ -305,8 +312,10 @@ fn muting_releases_held_notes() {
     assert_eq!(track_states(&e, 7), [VoiceState::Held]);
     e.handle(Command::SetMix {
         track: 7,
-        mute: true,
-        solo: false,
+        strip: ChannelStrip {
+            mute: true,
+            ..ChannelStrip::default()
+        },
     });
     assert_eq!(track_states(&e, 7), [VoiceState::Released]);
 }

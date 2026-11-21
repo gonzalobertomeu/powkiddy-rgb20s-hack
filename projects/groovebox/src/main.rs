@@ -30,6 +30,8 @@ mod engine;
 mod gestures;
 mod input;
 mod instrument;
+mod mix;
+mod mixer;
 mod modal;
 mod model;
 mod offline;
@@ -52,7 +54,7 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::WindowCanvas;
 use sdl2::surface::Surface;
 
-use app::{App, FontSize};
+use app::{App, FontSize, Screen};
 use engine::Event as EngineEvent;
 use gestures::{GestureConfig, Gestures};
 use input::{Button, Keymap, Sticks, Triggers};
@@ -335,6 +337,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut script = config.script.map(script::Runner::new);
     let mut shot: Option<std::path::PathBuf> = None;
     let mut mirror = sync::EngineMirror::new();
+    let mut perform = sync::PerformSender::default();
     // Peor reporte desde la última línea de log.
     let mut worst_load: Option<engine::LoadReport> = None;
     let mut last_load_log = 0;
@@ -460,6 +463,10 @@ fn run() -> Result<(), Box<dyn Error>> {
                 match step {
                     script::Step::Press(b) => changes.push(ButtonChange::Press(b)),
                     script::Step::Release(b) => changes.push(ButtonChange::Release(b)),
+                    script::Step::Stick(stick, x, y) => {
+                        sticks.set_position(stick, f32::from(x) / 100.0, f32::from(y) / 100.0);
+                        dirty = true;
+                    }
                     script::Step::Shot(path) => shot = Some(path),
                     script::Step::Quit => app.quit = true,
                     script::Step::Wait(_) => {}
@@ -511,6 +518,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                                     t0.elapsed().as_millis()
                                 );
                                 mirror = sync::EngineMirror::new();
+                                perform = sync::PerformSender::default();
                                 reported_errors = 0;
                                 logged_period = false;
                                 audio_started = Instant::now();
@@ -535,6 +543,13 @@ fn run() -> Result<(), Box<dyn Error>> {
 
         if let Some(out) = audio.as_mut() {
             sync_engine(out, &mut mirror, &app);
+            // Sticks: performance en la pista actual (spec-ui, mapa global).
+            perform.update(
+                app.track,
+                sticks.value(input::Stick::Left),
+                sticks.value(input::Stick::Right),
+                &mut |cmd| out.commands.push(cmd).is_ok(),
+            );
             while let Ok(event) = out.events.pop() {
                 match event {
                     EngineEvent::Load(r) => {
@@ -547,6 +562,11 @@ fn run() -> Result<(), Box<dyn Error>> {
                         worst.cpu_peak = worst.cpu_peak.max(r.cpu_peak);
                         worst.voices_max = worst.voices_max.max(r.voices_max);
                         worst.notes += r.notes;
+                    }
+                    EngineEvent::Meters(m) => {
+                        if app.meters.update(&m) && app.screen == Screen::Mix {
+                            dirty = true;
+                        }
                     }
                     EngineEvent::Playhead(p) => {
                         if app.playhead != p {

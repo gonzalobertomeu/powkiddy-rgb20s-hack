@@ -1,5 +1,5 @@
-//! Canción y Cadena (H5), Proyecto (ajustes y prueba de controles), Instrumento (por ahora solo
-//! las voces, H4) y la pantalla pendiente (Mezcla).
+//! Canción y Cadena (H5), Proyecto (ajustes y prueba de controles) e Instrumento (por ahora solo
+//! las voces, H4). La Mezcla está en `mix.rs`.
 
 use super::selection::{SELECT, footer_or_selection, selected};
 use super::{
@@ -12,13 +12,6 @@ use crate::instrument::{DrumModel, Patch};
 use crate::model::{
     CHAIN_LEN, ChordKind, MAX_SONG_ROWS, NoteCell, PHRASE_STEPS, TRACKS, TrackKind, note_name,
 };
-
-const NAV_HELP: [&str; 4] = [
-    "Sel+cruz pantalla",
-    "L1/R1 pista",
-    "L2/R2 sección",
-    "X escuchar",
-];
 
 fn title(p: &mut Painter, app: &App, context: &str) -> R {
     let parts = status_parts(app);
@@ -490,17 +483,6 @@ pub fn instrument(p: &mut Painter, app: &App, view: &View) -> R {
     }
     message_line(p, y + 4, app, view.now)?;
     footer_or_selection(p, app, 2, &INSTRUMENT_HELP)
-}
-
-/// Mezcla: llega con el motor (H9).
-pub fn pending(p: &mut Painter, app: &App, view: &View) -> R {
-    let track = &app.project.tracks[app.track];
-    title(p, app, &format!("PISTA {} {}", app.track + 1, track.name))?;
-    let text = fit("pantalla pendiente: llega con la mezcla (H9)", p.cols() - 2);
-    let w = p.text_width(&text);
-    p.text((WIDTH - w) / 2, HEIGHT / 2 - p.ch, &text, theme::DIM)?;
-    message_line(p, HEIGHT / 2 + p.ch, app, view.now)?;
-    footer(p, app.screen, 2, &NAV_HELP)
 }
 
 const BUTTON_LABELS: [(Button, &str); 15] = [

@@ -1,4 +1,4 @@
-//! Primitivas de DSP: ruido, seno polinómico, PolyBLEP, SVF TPT, soft clip, suavizado,
+//! Primitivas de DSP: ruido, seno polinómico, PolyBLEP, SVF TPT, soft clip,
 //! coeficientes de envolvente y flush-to-zero. Fórmulas y fuentes en
 //! docs/solutions/groovebox/dsp.md.
 
@@ -122,39 +122,6 @@ impl Svf {
             band: v1,
             high: x - self.k * v1 - v2,
         }
-    }
-}
-
-/// One-pole hacia un objetivo, para parámetros que cambian mientras suena (sin zipper noise).
-#[derive(Clone, Copy, Debug)]
-pub struct Smoother {
-    pub value: f32,
-    pub target: f32,
-    coef: f32,
-}
-
-impl Smoother {
-    pub fn new(value: f32, tau: f32, sample_rate: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            coef: one_pole_coef(tau, sample_rate),
-        }
-    }
-
-    #[inline]
-    pub fn next(&mut self) -> f32 {
-        self.value += (self.target - self.value) * self.coef;
-        self.value
-    }
-
-    /// Salta al objetivo (cuando no hay señal que proteger) y evita colas subnormales.
-    pub fn settle(&mut self) {
-        self.value = self.target;
-    }
-
-    pub fn is_settled(&self) -> bool {
-        (self.target - self.value).abs() < 1.0e-6
     }
 }
 

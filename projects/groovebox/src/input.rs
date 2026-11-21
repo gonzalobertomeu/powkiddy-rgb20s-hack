@@ -285,6 +285,11 @@ impl Sticks {
         self.axes[stick as usize][usize::from(vertical)] = if vertical { -v } else { v };
     }
 
+    /// Posición fija (guion de input): `x`, `y` en −1..=1, arriba positivo.
+    pub fn set_position(&mut self, stick: Stick, x: f32, y: f32) {
+        self.axes[stick as usize] = [x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0)];
+    }
+
     /// Ejes de un gamepad: devuelve el stick y si el eje es vertical.
     pub fn axis_of(axis: Axis) -> Option<(Stick, bool)> {
         match axis {

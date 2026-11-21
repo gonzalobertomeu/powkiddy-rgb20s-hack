@@ -132,7 +132,13 @@ groovebox/
   `Subtractive((voices, level, vel_to_amp, wave, amp_env, cutoff, resonance, env_amount, filter_decay))`.
   Todos los parámetros son opcionales: **el que falta toma el valor por defecto de su modelo** (una caja sin `decay`
   usa el de la caja, no el del bombo). Así, los parámetros nuevos del H8 se agregan sin subir la versión.
-- `mix` guarda `volume`, `pan`, los envíos y, si están activos, `mute` y `solo`. Todavía no hay `fx` ni `master`.
+- `mix` guarda `volume`, `pan`, los envíos y, si están activos, `mute` y `solo`.
+- **`fx` y `master` (H9)**, como en el ejemplo: `fx: (delay: (time, feedback, tone, width, return_level), reverb: (size,
+  damping, predelay, return_level))` y `master: (gain, limiter)`. `time` es `Sixteenth`, `Eighth`, `Sixteenth3` (3/16),
+  `Quarter`, `Eighth3` (3/8), `Half` o `Bar`; `gain` en dB (−24..12). Todo con `#[serde(default)]`: un archivo del H6
+  (sin `fx` ni `master`) o con campos parciales se abre con los valores por defecto del mockup de la Mezcla, **sin subir
+  `format_version`**. Los niveles se recortan a 0–127 y la ganancia a su rango (se avisa como "fuera de rango").
+  Mapeos a unidades en [dsp.md](dsp.md#mezcla-efectos-y-master-h9).
 - Pasos: `(i, note: On(n) | Off, chord: (kind, inversion), velocity, gate_ticks)`; `chord`, `velocity` (100) y
   `gate_ticks` (24) se omiten si tienen el valor por defecto. Las entradas de cadena omiten `transpose: 0`.
 - Los campos desconocidos se ignoran (un archivo de una versión más nueva con campos aditivos se abre igual).

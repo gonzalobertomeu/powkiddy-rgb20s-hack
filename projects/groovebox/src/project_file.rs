@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::instrument::{
     DrumModel, DrumParams, Instrument, MAX_VOICES, Patch, SynthParams, Wave, default_kit,
 };
+use crate::mix::{FxSettings, MASTER_GAIN_MAX, MASTER_GAIN_MIN, MasterSettings};
 use crate::model::{
     CHAIN_LEN, Chain, ChainEntry, ChannelStrip, Chord, ChordKind, DEFAULT_GATE, DEFAULT_TEMPO,
     DEFAULT_VELOCITY, MAX_SONG_ROWS, NOTE_MAX, NOTE_MIN, NoteCell, Phrase, Project, SWING_MAX,
@@ -48,6 +49,11 @@ pub struct ProjectFile {
     pub chains: BTreeMap<u8, Vec<ChainEntryFile>>,
     #[serde(default)]
     pub phrases: BTreeMap<u8, Vec<StepFile>>,
+    /// Delay y reverb de envío (H9). Si falta, los valores por defecto (sin subir la versión).
+    #[serde(default)]
+    pub fx: FxSettings,
+    #[serde(default)]
+    pub master: MasterSettings,
 }
 
 fn default_tempo() -> f32 {
@@ -339,6 +345,8 @@ impl From<&Project> for ProjectFile {
             song: p.song.rows[..used_rows].to_vec(),
             chains,
             phrases,
+            fx: p.fx,
+            master: p.master,
         }
     }
 }
@@ -504,6 +512,29 @@ fn step(s: &StepFile, r: &mut Repairs) -> Step {
     }
 }
 
+/// Niveles de los efectos en 0–127.
+fn clamp_fx(mut fx: FxSettings) -> FxSettings {
+    let d = &mut fx.delay;
+    for v in [
+        &mut d.feedback,
+        &mut d.tone,
+        &mut d.width,
+        &mut d.return_level,
+    ] {
+        *v = (*v).min(127);
+    }
+    let r = &mut fx.reverb;
+    for v in [
+        &mut r.size,
+        &mut r.damping,
+        &mut r.predelay,
+        &mut r.return_level,
+    ] {
+        *v = (*v).min(127);
+    }
+    fx
+}
+
 /// Resultado de convertir un archivo: el proyecto y los avisos de lo que se corrigió.
 pub struct Converted {
     pub project: Project,
@@ -529,6 +560,14 @@ impl ProjectFile {
         }
         project.swing = self.swing.clamp(SWING_MIN, SWING_MAX);
         if project.swing != self.swing {
+            r.out_of_range += 1;
+        }
+        project.fx = clamp_fx(self.fx);
+        project.master = MasterSettings {
+            gain: self.master.gain.clamp(MASTER_GAIN_MIN, MASTER_GAIN_MAX),
+            limiter: self.master.limiter,
+        };
+        if project.fx != self.fx || project.master != self.master {
             r.out_of_range += 1;
         }
 
@@ -722,7 +761,36 @@ mod tests {
         }
         p.tempo_bpm = 97.5;
         p.swing = 62;
+        p.tracks[7].mix.delay_send = 45;
+        p.fx.delay.time = crate::mix::DelayTime::Bar;
+        p.fx.reverb.damping = 99;
+        p.master = MasterSettings {
+            gain: -6,
+            limiter: false,
+        };
         assert_eq!(round_trip(&p), p);
+    }
+
+    #[test]
+    fn fx_and_master_are_optional_and_clamped() {
+        // Un archivo del H6 (sin fx ni master): los valores por defecto.
+        let p = parse("(format_version: 1)")
+            .unwrap()
+            .file
+            .into_project("x")
+            .project;
+        assert_eq!(p.fx, FxSettings::default());
+        assert_eq!(p.master, MasterSettings::default());
+        // Parciales y fuera de rango.
+        let text = "(format_version: 1, fx: (delay: (time: Quarter, feedback: 200)), \
+                    master: (gain: 40))";
+        let c = parse(text).unwrap().file.into_project("x");
+        assert_eq!(c.project.fx.delay.time, crate::mix::DelayTime::Quarter);
+        assert_eq!(c.project.fx.delay.feedback, 127);
+        assert_eq!(c.project.fx.delay.tone, FxSettings::default().delay.tone);
+        assert_eq!(c.project.master.gain, MASTER_GAIN_MAX);
+        assert!(c.project.master.limiter);
+        assert!(!c.warnings.is_empty());
     }
 
     #[test]

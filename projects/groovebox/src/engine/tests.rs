@@ -2,6 +2,7 @@ use std::f32::consts::TAU;
 
 use super::*;
 use crate::instrument::{DrumModel, DrumParams, SynthParams, Wave};
+use crate::mix::{FxSettings, MasterSettings};
 use crate::model::{Chord, ChordKind};
 
 const SR: f32 = 48_000.0;
@@ -473,4 +474,252 @@ fn saw_aliasing_is_low() {
         assert!(ingenua > -30.0, "el método no ve el alias de la ingenua");
         assert!(blep < -40.0, "alias a {alias} Hz: {blep:.1} dB");
     }
+}
+
+// --- Mezcla, efectos y master (H9) ------------------------------------------------------------
+
+fn render_stereo(engine: &mut Engine, frames: usize) -> (Vec<f32>, Vec<f32>) {
+    let mut buf = vec![0.0; frames * 2];
+    engine.render(&mut buf, 2);
+    let l = buf.iter().step_by(2).copied().collect();
+    let r = buf.iter().skip(1).step_by(2).copied().collect();
+    (l, r)
+}
+
+fn energy(x: &[f32]) -> f32 {
+    x.iter().map(|s| s * s).sum()
+}
+
+fn strip(volume: u8, pan: i8, delay_send: u8, reverb_send: u8) -> ChannelStrip {
+    ChannelStrip {
+        volume,
+        pan,
+        delay_send,
+        reverb_send,
+        ..ChannelStrip::default()
+    }
+}
+
+/// Un seno sostenido en la pista 7, ya estable.
+fn sine_engine(mix: ChannelStrip) -> Engine {
+    let mut engine = Engine::new(SR);
+    set(&mut engine, 7, sine_synth(1));
+    engine.handle(Command::SetMix {
+        track: 7,
+        strip: mix,
+    });
+    // Sin voces, la mezcla salta a su valor.
+    render_stereo(&mut engine, 1);
+    engine.handle(audition(7, &[57], GATE_INF));
+    render_stereo(&mut engine, 4_800);
+    engine
+}
+
+#[test]
+fn pan_is_constant_power_and_center_is_unchanged() {
+    let (l, r) = render_stereo(&mut sine_engine(strip(100, 0, 0, 0)), 4_800);
+    assert_eq!(l, r, "centrado: los dos canales iguales");
+    let center = energy(&l) + energy(&r);
+    let (l, r) = render_stereo(&mut sine_engine(strip(100, -64, 0, 0)), 4_800);
+    assert!(r.iter().all(|&x| x.abs() < 1e-6), "todo a la izquierda");
+    let left = energy(&l) + energy(&r);
+    // Potencia constante (con el soft clip, casi: el seno está a −8 dB).
+    assert!((left / center - 1.0).abs() < 0.1, "{left} vs {center}");
+    let (l, r) = render_stereo(&mut sine_engine(strip(100, 30, 0, 0)), 4_800);
+    assert!(energy(&r) > 2.0 * energy(&l), "a la derecha");
+}
+
+#[test]
+fn volume_and_pan_changes_are_smoothed() {
+    let mut engine = sine_engine(strip(100, 0, 0, 0));
+    let (l0, _) = render_stereo(&mut engine, 4_800);
+    let natural = max_jump(&l0);
+    engine.handle(Command::SetMix {
+        track: 7,
+        strip: strip(20, -64, 0, 0),
+    });
+    let (l, r) = render_stereo(&mut engine, 4_800);
+    assert!(
+        max_jump(&l) < natural * 1.6,
+        "L {} vs {natural}",
+        max_jump(&l)
+    );
+    assert!(
+        max_jump(&r) < natural * 1.05,
+        "R {} vs {natural}",
+        max_jump(&r)
+    );
+    // Llega al valor nuevo: −28 dB y todo a la izquierda (+3 dB).
+    let ratio = energy(&l[2400..]) / energy(&l0[..2400]);
+    let expected = (0.2f32 * 0.2).powi(2) * 2.0;
+    assert!(
+        (ratio / expected - 1.0).abs() < 0.15,
+        "{ratio} vs {expected}"
+    );
+}
+
+#[test]
+fn delay_send_echoes_after_the_note_and_the_tail_ends() {
+    let mut engine = Engine::new(SR);
+    engine.handle(Command::SetMix {
+        track: 2,
+        strip: strip(100, 0, 100, 0),
+    });
+    engine.handle(audition(2, &[60], 24));
+    // HH cerrado (60 ms) y eco a 3/16 de 120 BPM = 375 ms.
+    let (l, _) = render_stereo(&mut engine, 24_000);
+    let echo_at = 18_000;
+    let before = &l[6_000..echo_at - 100];
+    let echo = &l[echo_at..echo_at + 2_000];
+    let peak = |x: &[f32]| x.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(
+        peak(before) < 1e-3,
+        "entre medio, silencio: {}",
+        peak(before)
+    );
+    assert!(peak(echo) > 0.05, "eco {}", peak(echo));
+    assert!(!engine.is_quiet());
+    // Las colas terminan y el motor vuelve a no hacer nada.
+    let mut frames = 0;
+    while !engine.is_quiet() {
+        render_stereo(&mut engine, 4_800);
+        frames += 4_800;
+        assert!(frames < 48_000 * 30, "el delay no se apaga");
+    }
+    let (l, _) = render_stereo(&mut engine, 256);
+    assert!(l.iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn reverb_send_makes_a_stereo_tail() {
+    let mut engine = Engine::new(SR);
+    engine.handle(Command::SetMix {
+        track: 1,
+        strip: strip(100, 0, 0, 100),
+    });
+    engine.handle(audition(1, &[60], 24));
+    render_stereo(&mut engine, 24_000);
+    // A los 0,5 s la caja ya terminó: lo que suena es la cola, distinta en cada canal.
+    let (l, r) = render_stereo(&mut engine, 4_800);
+    assert!(energy(&l) > 1e-4);
+    assert_ne!(l, r);
+    assert_clean(&l);
+}
+
+#[test]
+fn limiter_keeps_the_soft_clip_input_at_0_dbfs() {
+    let loud = |limiter: bool| {
+        let mut engine = Engine::new(SR);
+        engine.handle(Command::SetMaster(MasterSettings { gain: 12, limiter }));
+        engine.handle(audition(0, &[60], 24));
+        let (l, _) = render_stereo(&mut engine, 24_000);
+        l.iter().fold(0.0f32, |m, x| m.max(x.abs()))
+    };
+    let limit = soft_clip(fx::LIMIT);
+    assert!(loud(true) <= limit + 1e-6, "con limitador {}", loud(true));
+    assert!(
+        loud(false) > limit + 0.1,
+        "sin limitador satura: {}",
+        loud(false)
+    );
+}
+
+#[test]
+fn stick_opens_the_synth_filter_and_returns() {
+    let mut p = SynthParams::bass();
+    p.filter_env = 64;
+    let mut inst = Instrument::new(Patch::Synth(p), 1);
+    inst.volume = 90;
+    let brightness = |engine: &mut Engine| {
+        let (l, _) = render_stereo(engine, 9_600);
+        let d: Vec<f32> = l.windows(2).map(|w| w[1] - w[0]).collect();
+        (energy(&d) / energy(&l)).sqrt()
+    };
+    let mut engine = Engine::new(SR);
+    set(&mut engine, 6, inst);
+    engine.handle(audition(6, &[36], GATE_INF));
+    render_stereo(&mut engine, 4_800);
+    let stored = brightness(&mut engine);
+    engine.handle(Command::Perform {
+        track: 6,
+        offsets: [1.0, 0.0, 0.0, 0.0],
+    });
+    render_stereo(&mut engine, 9_600);
+    let open = brightness(&mut engine);
+    assert!(open > 3.0 * stored, "abierto {open} vs guardado {stored}");
+    engine.handle(Command::Perform {
+        track: 6,
+        offsets: [0.0; 4],
+    });
+    render_stereo(&mut engine, 9_600);
+    let back = brightness(&mut engine);
+    assert!(
+        (back / stored - 1.0).abs() < 0.05,
+        "volvió {back} vs {stored}"
+    );
+}
+
+#[test]
+fn stick_on_a_drum_track_filters_its_bus() {
+    let hat = |offsets| {
+        let mut engine = Engine::new(SR);
+        engine.handle(Command::Perform { track: 3, offsets });
+        render_stereo(&mut engine, 4_800);
+        engine.handle(audition(3, &[60], 24));
+        let (l, _) = render_stereo(&mut engine, 9_600);
+        energy(&l)
+    };
+    let open = hat([0.0; 4]);
+    let closed = hat([-1.0, 0.0, 0.0, 0.0]);
+    // El hat abierto es casi todo arriba de 5 kHz: con el pasa-bajos en 110 Hz desaparece.
+    assert!(closed < 0.01 * open, "{closed} vs {open}");
+}
+
+#[test]
+fn mixing_and_effects_do_not_allocate() {
+    let mut engine = Engine::new(SR);
+    let mut buf = vec![0.0f32; 256 * 2];
+    let allocs = crate::alloc_check::count(|| {
+        for step in 0..400u16 {
+            let t = (step % 8) as u8;
+            engine.handle(Command::SetMix {
+                track: t,
+                strip: strip(80 + (step % 40) as u8, (step % 64) as i8 - 32, 60, 90),
+            });
+            engine.handle(Command::Perform {
+                track: t,
+                offsets: [((step % 20) as f32 - 10.0) / 10.0, 0.5, 0.3, -0.2],
+            });
+            if step % 50 == 0 {
+                let mut fx = FxSettings::default();
+                fx.delay.time = crate::mix::DelayTime::ALL[usize::from(step / 50) % 7];
+                fx.reverb.size = (step / 4) as u8;
+                engine.handle(Command::SetFx(fx));
+                engine.handle(Command::SetMaster(MasterSettings {
+                    gain: (step / 50) as i8,
+                    limiter: step % 100 == 0,
+                }));
+            }
+            engine.handle(audition(t, &[48 + (step % 24) as u8, 60, 63, 67], 12));
+            engine.render(&mut buf, 2);
+            let _ = engine.take_meters();
+        }
+    });
+    assert_eq!(allocs, 0);
+    assert_clean(&buf);
+}
+
+#[test]
+fn meters_report_tracks_voices_and_master() {
+    let mut engine = Engine::new(SR);
+    engine.handle(audition(0, &[60], 24));
+    engine.handle(audition(7, &[60, 64, 67], 24));
+    let mut buf = vec![0.0f32; 1600 * 2];
+    assert!(engine.take_meters().is_none());
+    engine.render(&mut buf, 2);
+    let m = engine.take_meters().expect("un reporte cada 1600 frames");
+    assert!(m.peaks[0] > 0.1 && m.peaks[7] > 0.01 && m.peaks[TRACKS] > 0.1);
+    assert_eq!(m.peaks[3], 0.0);
+    assert_eq!((m.voices[0], m.voices[7], m.pool_voices), (1, 3, 4));
+    assert!(m.limiter_gain <= 1.0);
 }

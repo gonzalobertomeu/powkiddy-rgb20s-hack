@@ -1,6 +1,7 @@
 //! Uso del motor sin audio ni ventana: render de demos a WAV y benchmark.
 //!
-//! - `groovebox render [carpeta]`: escribe `h5-cancion.wav` (la canción del proyecto de
+//! - `groovebox render [carpeta]`: escribe `h9-mezcla.wav` (la demo mezclada en estéreo, con
+//!   envíos, limitador y barridos de los sticks), `h5-cancion.wav` (la canción del proyecto de
 //!   demostración en modo canción), `h4-swing-voces.wav` (swing y notas largas superpuestas) y
 //!   `h3-beat.wav` (las secciones de la fila 0 de la demo en loop), tocados por el secuenciador
 //!   real en bloques de 256 frames como el callback, `h2-kit.wav` y `h2-robo.wav`.
@@ -12,9 +13,11 @@ use std::error::Error;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use crate::engine::fx::{Delay, Limiter, Reverb};
 use crate::engine::sequencer::samples_per_step;
 use crate::engine::{Command, Engine, MAX_NOTES, PlayMode, dsp};
 use crate::instrument::{Instrument, Patch, SynthParams};
+use crate::mix::{DelayTime, FxSettings};
 use crate::model::{
     Chord, ChordKind, GATE_INF, NoteCell, NoteSet, PHRASE_STEPS, Project, Section, Step,
     TICKS_PER_STEP, TRACKS,
@@ -311,6 +314,91 @@ fn play_h4(block: usize) -> Vec<f32> {
     out
 }
 
+/// Demo del H9: el proyecto demo mezclado (paneo de los hats y las palmas, envíos a delay y
+/// reverb, BAJO adelante y el master a +4 dB para que trabaje el limitador).
+fn h9_project() -> Project {
+    let mut p = crate::demo::project();
+    p.name = "h9".to_string();
+    // (volumen, paneo, delay, reverb) de cada pista.
+    let mix: [(u8, i8, u8, u8); TRACKS] = [
+        (105, 0, 0, 0),
+        (100, 0, 0, 45),
+        (85, -30, 0, 10),
+        (85, 30, 25, 15),
+        (95, 12, 35, 70),
+        (100, 0, 0, 0),
+        (110, 0, 0, 5),
+        (90, -12, 45, 55),
+    ];
+    for (track, (volume, pan, delay, reverb)) in p.tracks.iter_mut().zip(mix) {
+        track.mix.volume = volume;
+        track.mix.pan = pan;
+        track.mix.delay_send = delay;
+        track.mix.reverb_send = reverb;
+    }
+    p.fx = FxSettings::default();
+    p.fx.delay.time = DelayTime::Sixteenth3;
+    p.fx.delay.feedback = 55;
+    p.fx.reverb.size = 75;
+    p.master.gain = 4;
+    p
+}
+
+/// Movimientos de los sticks del render H9, en frames desde el principio: `(pista, offsets)`
+/// para cada bloque de 256. Barras 1–4 quietos; 5–8, stick izquierdo en el BAJO de −1 a +1
+/// con resonancia (filtro en vivo) y suelta; 9–10, stick derecho arriba y a la derecha en el
+/// SINTE (más delay y reverb, "tirar" al efecto) y suelta; 11–12, stick izquierdo a la
+/// izquierda en los HH abiertos (filtro de bus) y suelta.
+fn h9_sticks(frame: usize, bar: usize) -> Option<(u8, [f32; 4])> {
+    let b = frame / bar;
+    let within = (frame % bar) as f32 / bar as f32;
+    match b {
+        4..=7 => {
+            let t = ((b - 4) as f32 + within) / 4.0;
+            Some((6, [-1.0 + 2.0 * t, 0.6, 0.0, 0.0]))
+        }
+        8..=9 => Some((7, [0.0, 0.0, 1.0, 1.0])),
+        10..=11 => Some((3, [-0.8, 0.3, 0.0, 0.0])),
+        _ => None,
+    }
+}
+
+fn play_h9(block: usize) -> Vec<f32> {
+    let project = h9_project();
+    let mut engine = engine_with(&project);
+    let bar = loop_frames(&project, 1);
+    let total = 12 * bar;
+    let mut out = Vec::with_capacity((total + SR as usize * 4) * 2);
+    let mut buf = vec![0.0f32; block * 2];
+    engine.handle(Command::Play(PlayMode::Song { from_row: 0 }));
+    let mut moving: Option<u8> = None;
+    let mut pos = 0;
+    while pos < total {
+        // Los sticks llegan cada 256 frames (como la interfaz, más o menos), sea cual sea el
+        // tamaño del bloque: el audio no depende del buffer.
+        if pos % BENCH_FRAMES == 0 {
+            let now = h9_sticks(pos, bar);
+            if let Some(track) = moving.filter(|&t| now.map(|(n, _)| n) != Some(t)) {
+                engine.handle(Command::Perform {
+                    track,
+                    offsets: [0.0; 4],
+                });
+            }
+            if let Some((track, offsets)) = now {
+                engine.handle(Command::Perform { track, offsets });
+            }
+            moving = now.map(|(t, _)| t);
+        }
+        let n = block.min(total - pos);
+        engine.render(&mut buf[..n * 2], 2);
+        out.extend_from_slice(&buf[..n * 2]);
+        pos += n;
+    }
+    engine.handle(Command::Stop);
+    render_frames(&mut engine, &mut out, &mut buf, SR as usize * 4);
+    out
+}
+
 /// Frases que dura una pasada de la pista más larga por el bloque de la fila 0.
 fn song_phrases(project: &Project) -> usize {
     (0..TRACKS)
@@ -346,6 +434,14 @@ pub fn render(dir: Option<&str>) -> Result<(), Box<dyn Error>> {
         steps as usize * step,
     );
     write_wav(&dir.join("h2-kit.wav"), &out)?;
+
+    let out = play_h9(BENCH_FRAMES);
+    write_wav(&dir.join("h9-mezcla.wav"), &out)?;
+    println!(
+        "render: h9-mezcla = canción demo mezclada (paneo, envíos, master +4 dB con limitador): \
+         compases 5–8 filtro del BAJO con el stick, 9–10 SINTE tirado al delay y la reverb, \
+         11–12 filtro de bus en los HH abiertos, y 4 s de colas"
+    );
 
     let demo = crate::demo::project();
     let out = play_song(&demo, BENCH_FRAMES);
@@ -512,7 +608,29 @@ pub fn bench(seconds: Option<f32>) -> Result<(), Box<dyn Error>> {
         replay(events, 16 * step),
     );
 
+    let mut engine = Engine::new(SR as f32);
+    stress_setup(&mut engine);
+    mix_everything(&mut engine);
+    let events = hits_to_events(&stress_events(16), 120.0);
+    measure(
+        "bolsa llena + FX (envíos y paneo en 8 pistas, lim.)",
+        seconds,
+        engine,
+        replay(events, 16 * step),
+    );
+
     let demo = crate::demo::project();
+    let h9 = h9_project();
+    measure(
+        "secuenciador: demo mezclada (H9, con FX)",
+        seconds,
+        engine_with(&h9),
+        |engine, pos| {
+            if pos == 0 {
+                engine.handle(Command::Play(PlayMode::Song { from_row: 0 }));
+            }
+        },
+    );
     measure(
         "secuenciador: proyecto demo",
         seconds,
@@ -554,7 +672,70 @@ pub fn bench(seconds: Option<f32>) -> Result<(), Box<dyn Error>> {
         Engine::new(SR as f32),
         replay(hits_to_events(&drums, 120.0), 16 * step),
     );
+    bench_effects(seconds);
     Ok(())
+}
+
+/// Todas las pistas con paneo y envíos, y el master a +6 dB (el limitador trabaja).
+fn mix_everything(engine: &mut Engine) {
+    for t in 0..TRACKS as u8 {
+        let strip = crate::model::ChannelStrip {
+            pan: (i8::try_from(t).unwrap_or(0) - 4) * 12,
+            delay_send: 60,
+            reverb_send: 60,
+            ..crate::model::ChannelStrip::default()
+        };
+        engine.handle(Command::SetMix { track: t, strip });
+    }
+    engine.handle(Command::SetMaster(crate::mix::MasterSettings {
+        gain: 6,
+        limiter: true,
+    }));
+}
+
+type EffectBlock<'a> = dyn FnMut(&[f32], &mut [f32; 32], &mut [f32; 32]) + 'a;
+
+/// Costo de cada efecto por separado, en ns por frame estéreo, con ruido a la entrada (siempre
+/// activos) en bloques de 32 como el motor.
+fn bench_effects(seconds: f32) {
+    let frames = (seconds * SR as f32) as usize;
+    let mut rng = dsp::Rng::new(1);
+    let noise: Vec<f32> = (0..32 * 64).map(|_| 0.5 * rng.bipolar()).collect();
+    let out = ([0.0f32; 32], [0.0f32; 32]);
+    let fx = FxSettings::default();
+    let run = |name: &str, f: &mut EffectBlock| {
+        let mut o = out;
+        let start = Instant::now();
+        for i in 0..frames / 32 {
+            let k = (i % 63) * 32;
+            f(&noise[k..k + 32], &mut o.0, &mut o.1);
+            std::hint::black_box(&o);
+        }
+        let ns = start.elapsed().as_nanos() as f64 / frames as f64;
+        let budget = 1.0e9 / f64::from(SR);
+        println!(
+            "bench: {name:<44} {ns:6.1} ns/frame ({:.2} % de un núcleo de esta máquina)",
+            ns / budget * 100.0
+        );
+    };
+    let mut delay = Delay::new(SR as f32);
+    delay.set(&fx.delay, 120.0, SR as f32);
+    run("efecto: delay estéreo", &mut |x, l, r| {
+        delay.process(x, x, l, r)
+    });
+    let mut reverb = Reverb::new(SR as f32);
+    reverb.set(&fx.reverb, SR as f32);
+    run("efecto: reverb FDN 4 líneas", &mut |x, l, r| {
+        reverb.process(x, l, r)
+    });
+    let mut limiter = Limiter::new(SR as f32);
+    run("efecto: limitador (limitando, +6 dB)", &mut |x, l, r| {
+        for ((a, b), &s) in l.iter_mut().zip(r.iter_mut()).zip(x) {
+            *a = 4.0 * s;
+            *b = -4.0 * s;
+        }
+        limiter.process(l, r)
+    });
 }
 
 #[cfg(test)]
@@ -585,6 +766,34 @@ mod tests {
         assert_eq!(a.len(), (3 * part + SR as usize * 2) * 2);
         let peak = a.iter().fold(0.0f32, |m, x| m.max(x.abs()));
         assert!(peak > 0.1 && peak <= 1.0, "pico {peak}");
+    }
+
+    #[test]
+    fn h9_render_is_stereo_limited_and_independent_of_the_buffer_size() {
+        let a = play_h9(256);
+        assert_eq!(a, play_h9(64), "el mismo audio con buffers de 64 frames");
+        assert!(a.iter().all(|x| x.is_finite()));
+        let peak = a.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+        // El limitador deja la entrada del soft clip en 1: la salida no pasa de soft_clip(1).
+        assert!(
+            peak > 0.5 && peak <= dsp::soft_clip(1.0) + 1e-6,
+            "pico {peak}"
+        );
+        // Estéreo de verdad: los canales difieren (paneo, ping-pong, reverb).
+        let diff = a
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[l, r]| (l - r).abs())
+            .fold(0.0f32, f32::max);
+        assert!(diff > 0.05, "L − R máx. {diff}");
+        // Las colas de los efectos siguen después del Stop y terminan en silencio.
+        let bar = loop_frames(&h9_project(), 1);
+        let stop = 12 * bar * 2;
+        let after = &a[stop + SR as usize..stop + 2 * SR as usize];
+        assert!(after.iter().any(|x| x.abs() > 1e-4), "cola de la reverb");
+        let end = &a[a.len() - 4800..];
+        assert!(end.iter().all(|x| x.abs() < 0.01));
     }
 
     #[test]

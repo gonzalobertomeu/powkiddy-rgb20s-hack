@@ -56,7 +56,7 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
     - [Spec de interfaz (mockups y controles)](docs/solutions/groovebox/spec-ui.md)
     - [Spec del motor (voces, secuenciador y CPU)](docs/solutions/groovebox/spec-motor.md)
     - [Spec de formatos (proyecto, samples, MIDI)](docs/solutions/groovebox/spec-formatos.md)
-    - [DSP del motor (H2: voces, instrumentos, costos)](docs/solutions/groovebox/dsp.md)
+    - [DSP del motor (H2: voces, instrumentos, costos; H9: mezcla, efectos, limitador)](docs/solutions/groovebox/dsp.md)
 - Decisiones
   - [0001 — Rust como lenguaje](docs/decisions/0001-lenguaje-rust.md)
   - [0002 — Interfaz híbrida grilla + tracker](docs/decisions/0002-interfaz-hibrida-grilla-tracker.md) (aceptada)
@@ -75,6 +75,7 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
   - [0015 — Splash de arranque: logo propio en el kernel y un puente DRM en userspace](docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (propuesta)
   - [0016 — Un servicio de sistema en Rust maneja el volumen y mezcla a mono en ALSA](docs/decisions/0016-servicio-de-audio-del-sistema.md) (propuesta)
   - [0017 — Sacar la detección de jack de simple-audio-card en el DTB propio](docs/decisions/0017-sin-deteccion-de-jack-en-simple-audio-card.md) (propuesta)
+  - [0018 — Limitador de picos sin anticipación delante del soft clip](docs/decisions/0018-limitador-sin-anticipacion-antes-del-soft-clip.md) (propuesta)
 - [Entorno de desarrollo: justfile, compilación cruzada, simulador y deploy](infra/README.md)
 - [Proyectos](projects/README.md)
   - [launcher: menú al prender la consola](projects/launcher/README.md)

@@ -5,6 +5,8 @@
 //! - `tap <botón> [veces]`: aprieta y suelta (con 60 ms entre toques).
 //! - `press <botón>` / `release <botón>`: mantener y soltar (combinaciones).
 //! - `wait <ms>`
+//! - `stick <left|right> <x> <y>`: mueve un stick a `x`, `y` en % (−100 a 100; arriba es
+//!   positivo). `stick left 0 0` lo suelta.
 //! - `shot <archivo.bmp>`: captura de la pantalla tal como se ve.
 //! - `quit`
 //!
@@ -13,7 +15,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use crate::input::Button;
+use crate::input::{Button, Stick};
 
 /// Pausa después de cada toque: deja que se dibuje y separa toques seguidos.
 const TAP_GAP_MS: u64 = 60;
@@ -22,6 +24,8 @@ const TAP_GAP_MS: u64 = 60;
 pub enum Step {
     Press(Button),
     Release(Button),
+    /// Stick y posición en % (−100..=100).
+    Stick(Stick, i8, i8),
     Wait(u64),
     Shot(PathBuf),
     Quit,
@@ -64,6 +68,22 @@ pub fn parse(text: &str) -> Result<Vec<Step>, String> {
             "shot" => steps.push(Step::Shot(
                 arg.ok_or_else(|| err("falta el archivo"))?.into(),
             )),
+            "stick" => {
+                let stick = match arg {
+                    Some("left") => Stick::Left,
+                    Some("right") => Stick::Right,
+                    _ => return Err(err("stick desconocido (left o right)")),
+                };
+                let mut pct = || {
+                    words
+                        .next()
+                        .and_then(|w| w.parse::<i8>().ok())
+                        .filter(|v| (-100..=100).contains(v))
+                        .ok_or_else(|| err("posición inválida (−100 a 100)"))
+                };
+                let (x, y) = (pct()?, pct()?);
+                steps.push(Step::Stick(stick, x, y));
+            }
             "quit" => steps.push(Step::Quit),
             _ => return Err(err("orden desconocida")),
         }
@@ -138,6 +158,12 @@ mod tests {
         assert!(e.contains("línea 2"), "{e}");
         assert!(parse("wait x").is_err());
         assert!(parse("jump").is_err());
+        assert!(parse("stick middle 0 0").is_err());
+        assert!(parse("stick left 120 0").is_err());
+        assert_eq!(
+            parse("stick right -50 100").unwrap(),
+            [Step::Stick(Stick::Right, -50, 100)]
+        );
     }
 
     #[test]
