@@ -1,6 +1,6 @@
 # Blueprint — estado y próximos pasos
 
-Última actualización: 2026-11-19 (fin de la sesión 1)
+Última actualización: 2026-11-21 (fin de la sesión 2)
 
 Lo que **no** está en otros docs: plan de trabajo, pendientes del usuario y notas de la sesión.
 Para los datos técnicos, ver `README.md` y `docs/`.
@@ -9,10 +9,15 @@ Para los datos técnicos, ver `README.md` y `docs/`.
 
 - ✅ Investigación inicial: hardware, sistemas operativos y emulación (`docs/`)
 - ✅ Decisión: Rust para las apps ([ADR 0001](docs/decisions/0001-lenguaje-rust.md))
-- ✅ 6 agentes, 10 skills y `CLAUDE.md` con delegación automática
-- ✅ `infra/` y `justfile` armados ([ADR 0008](docs/decisions/0008-compilacion-cruzada-contenedor-x86-multiarch.md), aceptado): contenedor x86 con cross gcc y librerías arm64 de Debian trixie (la misma base que dArkOS). Build limpio en ~20 s e incremental en ~2 s. Ver `infra/README.md`
-- ✅ H0 en `projects/groovebox/`: ventana SDL2 + tono de 440 Hz con cpal/rtrb, probado nativo y en aarch64 emulado (glibc 2.34). Falta probarlo en la consola (video KMSDRM, mapeo de botones, períodos ALSA con `GROOVEBOX_FRAMES`)
-- ✅ La consola ya tiene ArkOS o dArkOS (falta confirmar cuál y qué versión en el inventario)
+- ✅ 6 agentes con modelo asignado (opus: `rust-dev`, `dsp-engineer`, `alarm-image-builder`; sonnet: `dev-infra`, `device-ops`, `groovebox-designer`), 9 skills y `CLAUDE.md` con delegación automática, reportes breves y verificación con `just check`
+- ✅ `infra/` y `justfile` ([ADR 0008](docs/decisions/0008-compilacion-cruzada-contenedor-x86-multiarch.md)). `just check` = fmt, clippy, tests, build aarch64 y glibc con una línea por paso. Ver `infra/README.md`
+- ✅ **La consola corre nuestra imagen de Arch Linux ARM** (kernel 7.1.2-rgb20s) y se accede por USB gadget: `ssh rgb20s` (10.55.0.1, usuario `alarm`, clave `~/.ssh/powkiddy`, entrada en `~/.ssh/config`). Consola serie en `/dev/ttyACM0`. Sin RTC: el reloj arranca atrasado (10-nov)
+- ✅ **Deploy por SSH:** `just deploy` (o `APP=launcher|rgb20s-audio just deploy`) compila y copia a `/home/alarm/<APP>/`; usa `scp` si la consola no tiene `rsync` y reemplaza el binario aunque esté corriendo
+- ✅ **Arranque:** splash "KingaGroove" (logo del kernel + `rgb20s-splash` por DRM, [ADR 0015](docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md)) → **launcher** en tty1 en lugar del login (`rgb20s-session`, [ADR 0014](docs/decisions/0014-sesion-launcher-en-tty1.md)): lista de `apps.toml` + Reiniciar/Apagar, vuelve al salir de la app. Instalados y probados en la consola
+- ✅ **Audio del sistema:** servicio `rgb20s-audio` ([ADR 0016](docs/decisions/0016-servicio-de-audio-del-sistema.md)): botones de volumen (pasos de 3 dB), Mux fijo en HP, mono/estéreo con los dos botones a la vez (mezcla en ALSA), estado en `/run/rgb20s-audio/state`. Indicador de volumen en el launcher (barra) y en el título del groovebox (con batería). Instalado y probado
+- ✅ **Mapeo de botones Nintendo** verificado: se intercambia solo A↔B (`RGB20S_PAD_LAYOUT`)
+- ✅ Groovebox H0–H6, H4 y H10 corriendo en la consola (H4 y H10 probados por el usuario el 2026-11-21)
+- Hallazgos de hardware del audio (detalle en `docs/hardware/inventario.md`): el parlante cuelga del canal L de la salida HP; `Playback Mux`=SPK no suena; el jack corta el parlante físicamente; la detección del jack (GPIO2_C6) nunca cambia. DTB sin detección y diagnóstico preparados ([ADR 0017](docs/decisions/0017-sin-deteccion-de-jack-en-simple-audio-card.md)), **sin instalar**
 
 ## Próximos pasos (en orden)
 
@@ -32,33 +37,38 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 - ✅ H3: secuenciador en el hilo de audio, con precisión de muestra y sin deriva. Loop de la sección visible con las 8 pistas, cabezal en la Grilla y la Frase, edición en vivo (`src/sync.rs` manda diferencias al motor), mute/solo y proyecto demo (`GROOVEBOX_DEMO=1`). 119 tests. El contador de voces ahora mide por subbloque y el log informa `notas N`.
 - ✅ H5: cabezales por pista con la regla de bloques, modos canción, sección, cadena y frase, Start contextual (Select + Start = loop de sección), pantallas Canción y Cadena editables y "seguir reproducción" (activado por defecto). 138 tests. `h5-cancion.wav` con la canción demo. El agente se detuvo antes de entregar el reporte; la sesión principal verificó el resultado (tests, clippy, fmt, cross).
 - ~~Pendiente del H5: X en Canción y Cadena toca solo la primera nota~~: resuelto en el H4 (vista previa "una vez" en el motor).
-- ✅ H6 (**MVP mínimo: "un beat de 4 compases guardado"**): proyecto en RON (`ron` 0.12, formato 1, disperso, versionado, parámetros que faltan = valor por defecto del modelo), guardado atómico con `.bak` (y recuperación ofrecida si `proyecto.ron` no se lee), `config.ron` con el último proyecto y los ajustes. Proyecto: GUARDAR, GUARDAR COMO y renombrar con el editor de nombres de la spec, CARGAR con la lista de proyectos, NUEVO, confirmación con cambios sin guardar (Start guarda y sigue, A descarta, B cancela), `*` en el título. Carpeta: `GROOVEBOX_DATA` o `~/.local/share/groovebox` (en la consola, `/home/alarm/...`, sin verificar). 168 tests; capturas con `scripts/demo-h6.txt` y `demo-h6-bak.txt`. Sin probar en la consola.
+- ✅ H6 (**MVP mínimo: "un beat de 4 compases guardado"**): proyecto en RON (`ron` 0.12, formato 1, disperso, versionado, parámetros que faltan = valor por defecto del modelo), guardado atómico con `.bak` (y recuperación ofrecida si `proyecto.ron` no se lee), `config.ron` con el último proyecto y los ajustes. Proyecto: GUARDAR, GUARDAR COMO y renombrar con el editor de nombres de la spec, CARGAR con la lista de proyectos, NUEVO, confirmación con cambios sin guardar (Start guarda y sigue, A descarta, B cancela), `*` en el título. Carpeta: `GROOVEBOX_DATA` o `~/.local/share/groovebox` (en la consola, `/home/alarm/...`, sin verificar). 168 tests; capturas con `scripts/demo-h6.txt` y `demo-h6-bak.txt`. Probado en la consola.
 - Pendientes del H6: autoguardado (v1), conservar en `config.ron` los campos que la app todavía no conoce (audio, input) cuando se agreguen, medir cuánto tarda GUARDAR en la SD y probar un corte de energía justo después de guardar (device-ops). Sigue abierta la pregunta de la segunda microSD (spec-formatos, pregunta 1): bastaría con apuntar `GROOVEBOX_DATA` a su punto de montaje.
-- ✅ H4 (2026-11-20, hecho después del H6): **swing** global 50–75 % con precisión de muestra y sin deriva (`SetSwing`, conectado al RON), **tempo y swing editables en Proyecto**, **voces por pista** editables en Instrumento (por ahora el único parámetro de esa pantalla) con notas largas superpuestas y robo de la más vieja de la pista (al bajar el límite en vivo se roban todas las que sobran), y **X en Canción y Cadena** toca la frase entera una vez (`PreviewPhrase`, reloj propio). 186 tests. Demo: `groovebox render` → `h4-swing-voces.wav` (recto, swing 66 %, SINTE en 1 voz; idéntico nativo y aarch64 emulado) y capturas con `scripts/demo-h4.txt`. Bench sin cambios apreciables. Sin probar en la consola.
-- ✅ H10 (2026-11-20): **selección, copiar, cortar y pegar** en Grilla (celda → pista → sección), Frase (celda → columna → frase), Canción (celda → fila → bloque), Cadena (posiciones → cadena) e Instrumento. Y abre, la cruz extiende, A copia, X corta, B cancela, Select + A pega; portapapeles único con tipo (un tipo incompatible da un aviso). Pasos por valor; celdas y entradas por referencia (cortar quita referencias, no borra cadenas ni frases); pegar crea lo que falte (frase, cadena, fila). Sincroniza con el motor por `EngineMirror` y marca cambios sin guardar. Lógica en `src/selection.rs` (208 tests en total). Capturas con `scripts/demo-h10.txt`. Desvíos en el README del groovebox. Sin probar en la consola; deshacer y A + cruz sobre la selección quedan para v1.
-- Pendientes del H4: pantalla Instrumento completa (H8); el swing no se ve en la Grilla (los pasos se dibujan en la grilla recta); escucharlo en la consola (device-ops).
-- Siguiente: H7 (sampler y navegador de archivos).
+- ✅ H4 (2026-11-20, hecho después del H6): **swing** global 50–75 % con precisión de muestra y sin deriva (`SetSwing`, conectado al RON), **tempo y swing editables en Proyecto**, **voces por pista** editables en Instrumento (por ahora el único parámetro de esa pantalla) con notas largas superpuestas y robo de la más vieja de la pista (al bajar el límite en vivo se roban todas las que sobran), y **X en Canción y Cadena** toca la frase entera una vez (`PreviewPhrase`, reloj propio). 186 tests. Demo: `groovebox render` → `h4-swing-voces.wav` (recto, swing 66 %, SINTE en 1 voz; idéntico nativo y aarch64 emulado) y capturas con `scripts/demo-h4.txt`. Bench sin cambios apreciables. Probado en la consola (2026-11-21).
+- ✅ H10 (2026-11-20): **selección, copiar, cortar y pegar** en Grilla (celda → pista → sección), Frase (celda → columna → frase), Canción (celda → fila → bloque), Cadena (posiciones → cadena) e Instrumento. Y abre, la cruz extiende, A copia, X corta, B cancela, Select + A pega; portapapeles único con tipo (un tipo incompatible da un aviso). Pasos por valor; celdas y entradas por referencia (cortar quita referencias, no borra cadenas ni frases); pegar crea lo que falte (frase, cadena, fila). Sincroniza con el motor por `EngineMirror` y marca cambios sin guardar. Lógica en `src/selection.rs` (208 tests en total). Capturas con `scripts/demo-h10.txt`. Desvíos en el README del groovebox. Probado en la consola (2026-11-21); deshacer y A + cruz sobre la selección quedan para v1.
+- Pendientes del H4: pantalla Instrumento completa (H8); el swing no se ve en la Grilla (los pasos se dibujan en la grilla recta).
+- Siguiente: **H8** (sustractivo polifónico, acordes y pantalla Instrumento; recomendado) o H7 (sampler y navegador de archivos). Después H9 y H11.
+- Indicador de volumen en el título: con 8×16 en la Frase ya no entran el nombre del proyecto (con su `*`) ni la octava; revisar el orden de recorte si molesta.
+- Al cambiar mono/estéreo con algo sonando, el groovebox reabre el audio y la reproducción vuelve a empezar (corte breve).
 - Pendiente: licencias de los crates de Rust en el deploy (¿`cargo-about`?).
 
-### Camino a Arch Linux ARM (decisión del usuario, 2026-11-19: ir directo a Arch, sin relevar antes el sistema actual)
-4. ✅ (armada, sin probar) **`alarm-image-builder`**: investigar y armar la imagen de Arch Linux ARM para la RGB20S (U-Boot, kernel mainline con el DTS de ROCKNIX, rootfs mínima, red por USB gadget y SSH, autoarranque de una app). Todo sobre archivos `.img`, nunca sobre la SD. Resultado: `infra/build/out/rgb20s-arch.img` (1235 MiB) con `just img`, que pasa los 41 chequeos de `just img-check`. Kernel 7.1.2 con el DTS de ROCKNIX, gadget NCM + ACM (consola en 10.55.0.1, usuario `alarm`/`alarm`) y logs de cada arranque en `/boot/logs/`. ADR 0009 a 0012 aceptados. Riesgos del primer arranque en `docs/firmware/arch-linux-arm.md`.
-5. **Antes de flashear:** con la SD actual montada en la Mac, respaldar en solo lectura la partición de arranque (DTB, U-Boot, config) y, si hay espacio, una imagen completa con `dd`. Es la única referencia de un sistema que arranca en esta consola.
-6. Flashear la imagen de Arch (confirmación explícita del usuario).
-7. Primer arranque. Sin Wi-Fi ni serie, el diagnóstico depende de: la pantalla, logs que el sistema deje en la partición de arranque y, si funciona, SSH por USB gadget.
-8. **`device-ops`**: inventario en Arch (adaptar `infra/device/inventory.sh` o correrlo por SSH). Primer deploy del H0 y medición de latencia de audio.
+### Imagen de Arch Linux ARM (2026-11-19 a 21)
+- ✅ Imagen armada (`just img`), flasheada y arrancando en la consola. ADR 0009 a 0012 aceptados. Splash instalado por SSH sin reflashear (`infra/build/out/device-update/`, con respaldo y entrada `arch-prev` en extlinux).
+- **Pendiente: imagen completa reproducible.** La rootfs (19-nov) no trae SDL2 (`sdl2-compat`), `rsync`, launcher, groovebox, `rgb20s-session`, `rgb20s-audio` ni la clave `powkiddy.pub` (`infra/image/local/` vacía → SSH con contraseña). Si se reflashea hoy, se pierde todo eso. Tarea para `alarm-image-builder`.
+- Pendiente opcional: diagnóstico del jack con el usuario (`just img-dtb-update`, `projects/linux-image/jack/README.md`) e instalación del DTB sin detección.
+- `rgb20s-bootlog.service` infla `systemd-analyze` (sleep 10 + volcado a la FAT, después del launcher): `BOOT_LOGS=no` cuando la imagen esté estable.
+- Inventario completo pendiente (`infra/device/inventory.sh` adaptado a Arch) y medición de latencia de audio y CPU (`groovebox bench`) en la consola: parte del H11.
 
 ### Más adelante
-9. Explorar USB gadget (MIDI o HID) además de red.
-10. Ajustar el contenedor de build a librerías de Arch ARM si hace falta (hoy usa Debian trixie: los binarios piden glibc 2.34, compatibles con Arch).
+- Explorar USB gadget (MIDI o HID) además de red.
+- Auriculares USB (HyperX Cloud III): el dongle es UAC estándar y el kernel ya lo soporta, pero el USB-C probablemente no da 5 V en modo host (falta `vbus-supply` en el DTS) y comparte puerto con el gadget de SSH. Nunca poner el puerto en host con la Mac conectada. Detalle en `docs/hardware/inventario.md`.
+- Ajustar el contenedor de build a librerías de Arch ARM si hace falta (hoy usa Debian trixie: los binarios piden glibc 2.34, compatibles con Arch).
 
 ## Pendientes del usuario
 
 - [ ] Decidir si se agrega una regla `opaque` de Hyprland para la ventana `rgb20s-sim` (hoy se ve translúcida por la opacidad por defecto de Omarchy)
-- [ ] Instalar `just`: `sudo pacman -S just` (sin esto no anda ninguna receta)
+- [x] Instalar `just`
 - [ ] (Opcional, solo para `just qemu-boot`) `sudo pacman -S qemu-system-aarch64`
 - [x] Aceptar el ADR 0008 (compilación cruzada)
 - [x] Aceptar los ADR 0004, 0005 y 0009 a 0012 (2026-11-20)
-- [ ] Respaldar la SD actual y flashear `rgb20s-arch.img`
+- [x] Flashear `rgb20s-arch.img`
+- [ ] Revisar y aceptar (o cambiar) los ADR 0014 a 0017, en estado *propuesta*
+- [ ] (Opcional) Instalar `rsync` en la consola (`sudo pacman -S rsync`; necesita internet) o esperar a la imagen completa
 - [x] Reiniciar Claude Code para que carguen los agentes, las skills y el `CLAUDE.md`
 - [x] Actualizar el remote (el repo se renombró):
       `git remote set-url origin git@github.com:gonzalobertomeu/powkiddy-rgb20s-hack.git`
@@ -80,15 +90,13 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 - P-locks en v1.
 - Reflejado en los ADR 0006 y 0007 (aceptados); el 0003 queda reemplazado. Las preguntas abiertas (4 nuevas + 12 anteriores) están en `docs/solutions/groovebox/README.md`.
 
-## Gadget USB: lo que se sabe sin la consola
-
-Según el código de dArkOS, el kernel trae dwc2 dual-role, configfs y ECM/RNDIS. Pero el DTS del RG351MP tiene `otg-port` en `disabled`: si la RGB20S usa ese DTB, el USB-C podría estar cableado al controlador solo-host (sin verificar). Lo decide el inventario (`infra/device/inventory.sh`, guía en `docs/hardware/inventario.md`), con tres corridas: A sin nada, B con tethering y C con cable a la Mac.
-
 ## Notas de la sesión
 
 - **Delegación:** el `description` de los agentes sirve como trigger, pero en este entorno la delegación automática necesita la autorización explícita que está en `CLAUDE.md`. Si los agentes no se usan solos, revisar eso primero.
 - **Datos no verificados en las skills** (escritos de memoria, a confirmar antes de usarlos): offsets de arranque del RK3326 (sector 64, particiones desde 16 MiB), nombres de opciones del kernel, API exacta de `cpal`, mecanismo de flush-to-zero en Rust para aarch64.
 - **Herramientas en la Mac:** `qemu-aarch64-static`, binfmt, Docker y `cargo` 1.99 instalados. Faltan `qemu-system-aarch64` y `aarch64-linux-gnu-gcc`.
-- **Riesgo de glibc:** `build-arm` genera binarios que piden glibc 2.34. Si la consola tiene ArkOS viejo (glibc 2.30), no arrancan: pasar a dArkOS o usar `cargo zigbuild` (plan B, ya probado).
+- **glibc:** los binarios piden 2.34 (servicio de audio 2.39); la consola con Arch tiene 2.43. `just check` lo verifica contra `CONSOLE_GLIBC_MAX`.
 - **Imágenes Docker en el host:** `rgb20s-cross:dev` (3,2 GB) y `rgb20s-arm64:dev` (1,9 GB).
 - **No confundir** la RGB20S (RK3326) con la RGB20SX (RK3566), que sí está en mainline.
+- **Sesión 2 (2026-11-20/21):** SSH y deploy por USB, launcher, splash, H6, H4, H10, mapeo Nintendo, servicio de audio con indicador de volumen, diagnóstico del jack. Los instaladores que necesitan `sudo` en la consola los corre el usuario (`ssh -t rgb20s 'sudo .../install.sh'`): el clasificador de permisos no deja usar la contraseña por defecto desde acá.
+- **Instalar algo nuevo en la consola** = `just deploy` + `scp -r projects/<app>/system rgb20s:/home/alarm/<app>/` + el usuario corre `install.sh` con sudo. Para que el launcher tome un binario nuevo: `ssh rgb20s pkill -x launcher` (el wrapper lo relanza).
