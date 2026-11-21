@@ -8,7 +8,8 @@ RGB20S, rootfs adelgazada y acceso de desarrollo por el USB-C (red + serie) haci
   [0010](../../docs/decisions/0010-kernel-mainline-con-dts-y-drivers-de-rocknix.md),
   [0011](../../docs/decisions/0011-rootfs-alarm-con-systemd.md),
   [0012](../../docs/decisions/0012-acceso-por-usb-gadget-ncm-acm.md),
-  [0015](../../docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (splash, propuesta)
+  [0015](../../docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (splash, propuesta),
+  [0017](../../docs/decisions/0017-sin-deteccion-de-jack-en-simple-audio-card.md) (jack, propuesta)
 - Estado: la imagen arranca en la consola (2026-11-20). El splash de arranque ([`splash/`](splash/README.md)) está
   armado y probado en QEMU, **sin probar en la consola**.
 
@@ -28,6 +29,7 @@ just img                  # fetch + U-Boot + splash + kernel + rootfs + imagen
 O por pasos: `just img-fetch`, `just img-uboot`, `just img-splash`, `just img-kernel`, `just img-rootfs`, `just img-assemble`, `just img-check`.
 Para actualizar una consola en uso sin reflashear (kernel, módulos, `extlinux.conf`, splash): `just img-device-update` y
 [`splash/README.md`](splash/README.md#instalar-en-la-consola-en-uso-sin-reflashear).
+Para cambiar solo el device tree (y diagnosticar el jack de auriculares): `just img-dtb-update` y [`jack/README.md`](jack/README.md).
 El overlay y los módulos se copian en `img-assemble`: cambiarlos no obliga a repetir `img-rootfs`.
 Resultado: `infra/build/out/rgb20s-arch.img` y su `.sha256`.
 
@@ -53,7 +55,8 @@ kernel/
     patches/          7 parches (dwc2, SD, símbolo que necesita el joypad)
     drivers/          panel-generic-dsi.c (driver de panel, built-in)
     linux.aarch64.conf  config base de RK3326
-  dts/rk3326-powkiddy-rgb20s-alarm.dts   DTB propio: USB en modo periférico por defecto
+  dts/rk3326-powkiddy-rgb20s-alarm.dts   DTB propio: USB en modo periférico por defecto, sin hp-det (ADR 0017)
+  dts/rk3326-powkiddy-rgb20s-alarm-hpdet.dts  variante experimental: jack por gpio-keys en GPIO2_C6
   config.fragment     ajustes sobre la config de ROCKNIX
 uboot/
   rocknix/            defconfig, DT y parche de U-Boot de ROCKNIX; b_boot.ini de referencia
@@ -68,6 +71,8 @@ rootfs/
   overlay/            archivos que se copian a la rootfs (servicios rgb20s-*, red, SSH, journald)
 splash/               splash de arranque: arte (make-splash.py), logo del kernel, rgb20s-splash (DRM),
                       instalación y rollback en una consola en uso
+jack/                 diagnóstico del pin del jack (rgb20s-gpio-probe, jack-diagnose.sh) e instalación
+                      solo del DTB, con rollback
 ```
 
 ## Usar la imagen

@@ -167,6 +167,11 @@ img: img-fetch img-uboot img-splash img-kernel img-rootfs img-assemble
 img-device-update:
     "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-device-update.sh
 
+# Paquete para cambiar solo el device tree de una consola en uso + diagnóstico del jack:
+# infra/build/out/dtb-update/ (projects/linux-image/jack/README.md). Requiere img-kernel una vez.
+img-dtb-update:
+    "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/build-dtb-update.sh
+
 # Revisa la imagen sin hardware: offsets del bootloader, particiones, FAT y ext4
 img-check:
     "{{infra}}/image/scripts/in-builder.sh" bash infra/image/scripts/check-image.sh

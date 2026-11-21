@@ -12,12 +12,27 @@
  *   según /boot/rgb20s.conf (USB_ROLE=host), sin recompilar.
  *   (sin verificar) que el USB-C esté cableado al puerto OTG del PHY: si está en
  *   el puerto host (EHCI/OHCI), el modo periférico no hace nada visible.
+ *
+ * - Jack de auriculares: se quita `simple-audio-card,hp-det-gpios` (GPIO2_C6, heredado de
+ *   la Odroid Go Advance). En la RGB20S ese pin no cambia al enchufar (medido el
+ *   2026-11-20: SW_HEADPHONE_INSERT siempre 1, cero eventos) y, peor, la detección de
+ *   simple-audio-card apaga el widget DAPM "Headphones" cuando informa "desenchufado":
+ *   como el parlante está cableado al canal L de la salida HP, eso lo dejaría mudo.
+ *   Sin la propiedad, la salida HP queda siempre encendida y desaparecen el control
+ *   ALSA "Headphones Jack" y /dev/input/event "rk817_int Headphones", que mentían.
+ *   Si el diagnóstico (projects/linux-image/jack/) encuentra un pin real, la detección
+ *   va por gpio-keys (rk3326-powkiddy-rgb20s-alarm-hpdet.dts), que no toca DAPM.
+ *   Ver docs/hardware/inventario.md#jack-de-auriculares-diagnóstico-del-pin-de-detección.
  */
 
 #include "rk3326-powkiddy-rgb20s.dts"
 
 / {
 	model = "Powkiddy RGB20S (Arch Linux ARM)";
+};
+
+&{/rk817-sound} {
+	/delete-property/ simple-audio-card,hp-det-gpios;
 };
 
 &usb20_otg {

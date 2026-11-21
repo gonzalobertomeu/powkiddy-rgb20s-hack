@@ -32,10 +32,9 @@ fi
 #    (igual que ROCKNIX); solo se compilan los DTB de la RGB20S.
 dts_dir="$src/arch/arm64/boot/dts/rockchip"
 cp "$li"/rocknix/dts/* "$li"/dts/* "$dts_dir/"
-grep -q 'rk3326-powkiddy-rgb20s-alarm.dtb' "$dts_dir/Makefile" || cat >> "$dts_dir/Makefile" <<'EOF'
-dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3326-powkiddy-rgb20s.dtb
-dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3326-powkiddy-rgb20s-alarm.dtb
-EOF
+for d in rk3326-powkiddy-rgb20s rk3326-powkiddy-rgb20s-alarm rk3326-powkiddy-rgb20s-alarm-hpdet; do
+  grep -q "+= $d.dtb\$" "$dts_dir/Makefile" || echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += $d.dtb" >> "$dts_dir/Makefile"
+done
 
 # 2b. Logo de arranque (splash): se genera con make-splash.py y se copia solo si cambió, para no
 #     forzar el relinkeo del kernel en cada build (Kconfig: CONFIG_LOGO_LINUX_CLUT224_FILE).
@@ -62,7 +61,8 @@ done < "$li/config.fragment"
 # 4. Compilar
 log "compilando Image, módulos y DTB con $jobs hilos"
 make -C "$src" -j"$jobs" Image modules \
-  rockchip/rk3326-powkiddy-rgb20s.dtb rockchip/rk3326-powkiddy-rgb20s-alarm.dtb
+  rockchip/rk3326-powkiddy-rgb20s.dtb rockchip/rk3326-powkiddy-rgb20s-alarm.dtb \
+  rockchip/rk3326-powkiddy-rgb20s-alarm-hpdet.dtb
 krel="$(make -C "$src" -s kernelrelease)"
 
 # 5. Módulo externo del joypad (rocknix-singleadc-joypad)

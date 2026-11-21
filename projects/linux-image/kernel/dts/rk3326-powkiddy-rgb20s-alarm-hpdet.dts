@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Variante EXPERIMENTAL de rk3326-powkiddy-rgb20s-alarm.dts con detección del jack por
+ * gpio-keys (evento EV_SW / SW_HEADPHONE_INSERT), sin acoplarla a DAPM: informar
+ * "desenchufado" no apaga la salida HP (que también alimenta el parlante).
+ *
+ * Hipótesis (sin verificar): el jack lleva GPIO2_C6 a nivel ALTO al enchufar y el pin necesita
+ * pull-down, como en la Odroid Go Advance (grupo `hp_det` de rk3326-odroid-go.dtsi, que el DTS
+ * de ROCKNIX define pero no aplica a ningún nodo). Con el pull por defecto el pin se lee siempre
+ * en 1, lo que coincide con lo medido. Solo usar si projects/linux-image/jack/jack-diagnose.sh
+ * muestra que con pull=down el pin vale 0 sin auriculares y 1 con auriculares. Si el diagnóstico
+ * da otro pin o la polaridad contraria, cambiar `gpios` y `pinctrl` acá.
+ *
+ * Se instala en lugar del DTB normal con:
+ *     sudo ./install-dtb-on-device.sh --hpdet
+ */
+
+#include "rk3326-powkiddy-rgb20s-alarm.dts"
+
+/ {
+	headphone-detect {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&hp_det>;	/* GPIO2_C6 como GPIO con pull-down (rk3326-odroid-go.dtsi) */
+
+		switch-headphone {
+			label = "Headphone detect";
+			gpios = <&gpio2 RK_PC6 GPIO_ACTIVE_HIGH>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_HEADPHONE_INSERT>;
+			debounce-interval = <150>;
+		};
+	};
+};

@@ -94,15 +94,18 @@ ROCKNIX también usa MBR.
 | Base | Hereda de la Odroid Go Advance (`rk3326-odroid-go.dtsi`); compatible `powkiddy,rgb20s` |
 | Pantalla | DSI de 4 carriles, 640×480, RGB888, panel con comandos tipo NV3051D (`ff30 52 0x`), driver `rocknix,generic-dsi`; 10 modos (el por defecto, 26,4 MHz). Alimentación `vcc_lcd` (LDO8 del RK817), backlight PWM1 (`vcc_bl`, LDO7) |
 | Controles | `rocknix-singleadc-joypad`: 4 ejes por un multiplexor analógico sobre el canal 1 del SARADC (selección GPIO3 PB3/PB0, habilitación PB5), 17 botones GPIO, ejes X/Y invertidos. Volumen +/− con `gpio-keys` (GPIO2 PA0/PA1). Vibración por PWM0 |
-| Audio | Códec del RK817 por I2S1 (`simple-audio-card` "rk817_int"): parlante (SPKO), auriculares (HPOL/HPOR) con detección en GPIO2 PC6, micrófono |
+| Audio | Códec del RK817 por I2S1 (`simple-audio-card` "rk817_int"): parlante (SPKO), auriculares (HPOL/HPOR) con detección en GPIO2 PC6, micrófono. **En la consola:** el parlante cuelga del canal L de HP, SPKO no suena y GPIO2 PC6 no cambia al enchufar ([inventario](../hardware/inventario.md#jack-de-auriculares-diagnóstico-del-pin-de-detección)) |
 | Energía | PMIC RK817 en I2C0 (0x20); batería 3500 mAh; cargador sin resistencia de sensado (`resistor-sense-micro-ohms = <0>`) |
 | microSD | TF1 en `sdmmc` (arranque); **TF2 en el controlador `sdio`** (detección GPIO3 PB6). Alias `mmc0 = sdio`, `mmc1 = sdmmc`: **la tarjeta de arranque es `mmcblk1`** y la de datos `mmcblk0`. Por eso la imagen monta por PARTUUID |
 | USB | `u2phy`: `host-port` okay, `otg-port` **disabled**; `usb20_otg` (dwc2) okay con `usb-role-switch` (por defecto host). Se borra `vcc_host` (en la OGA alimenta el puerto host) |
 | Otros | Un solo LED (se borran los de la OGA), sin flash SPI (`sfc` deshabilitado), sin Wi-Fi en el DTS |
 
 El DTB propio (`rk3326-powkiddy-rgb20s-alarm.dtb`) incluye el de ROCKNIX y solo cambia `role-switch-default-mode` a
-`"peripheral"` ([ADR 0012](../decisions/0012-acceso-por-usb-gadget-ncm-acm.md)). El DTB de ROCKNIX sin cambios también va en la
-imagen, como segunda entrada de `extlinux.conf`.
+`"peripheral"` ([ADR 0012](../decisions/0012-acceso-por-usb-gadget-ncm-acm.md)) y borra `simple-audio-card,hp-det-gpios`
+([ADR 0017](../decisions/0017-sin-deteccion-de-jack-en-simple-audio-card.md), propuesta: la detección acoplada a DAPM apagaría la
+salida HP, de la que cuelga el parlante). La variante `rk3326-powkiddy-rgb20s-alarm-hpdet.dtb` (experimental, no se usa por
+defecto) detecta el jack con `gpio-keys`; para cambiar solo el DTB en una consola en uso: [`projects/linux-image/jack/`](../../projects/linux-image/jack/README.md).
+El DTB de ROCKNIX sin cambios también va en la imagen, como segunda entrada de `extlinux.conf`.
 
 ### USB gadget: ¿es posible?
 
@@ -247,6 +250,7 @@ Lo que las skills `rockchip-rk3326-boot` y `alarm-rootfs` dicen de memoria, cont
 - [ ] Confirmar pantalla, joypad, audio, batería y Panfrost
 - [ ] Medir el tiempo de arranque y adelgazar la config del kernel
 - [ ] Servicio del groovebox en KMS (requiere `mesa`, `sdl2` y un build contra Arch)
+- [ ] Jack: correr `projects/linux-image/jack/jack-diagnose.sh` con auriculares e instalar el DTB sin `hp-det-gpios`
 - [ ] Splash: confirmar en la consola el logo del kernel, el splash y el traspaso al launcher; diagnosticar la pantalla negra (ver [Splash de arranque](#splash-de-arranque))
 
 ## Fuentes
@@ -262,3 +266,4 @@ Lo que las skills `rockchip-rk3326-boot` y `alarm-rootfs` dicen de memoria, cont
 - [Linux: USB gadget configfs](https://docs.kernel.org/usb/gadget_configfs.html)
 - Linux 7.1.2: `drivers/video/logo/{Kconfig,logo.c,pnmtologo.c}`, `drivers/video/fbdev/core/{fbcon.c,fb_logo.c}`, `Documentation/fb/fbcon.rst`, `drivers/gpu/drm/{drm_auth.c,drm_fb_helper.c,drm_file.c}` (splash)
 - Builds propios en la Mac (2026-11-19): ver [`projects/linux-image/README.md`](../../projects/linux-image/README.md)
+- Jack de auriculares: fuentes en [`docs/hardware/inventario.md`](../hardware/inventario.md#fuentes) (ROCKNIX `next` 21d9dc67, dArkOS, Linux 7.1.2 `simple-card-utils.c`)
