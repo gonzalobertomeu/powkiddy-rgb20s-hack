@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn finds_battery_and_skips_mains() {
-        let base = std::env::temp_dir().join(format!("launcher-bat-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("rgb20s-bat-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         assert_eq!(read(&base), None);
         supply(&base, "ac", &[("type", "Mains"), ("online", "1")]);

@@ -312,6 +312,30 @@ y esas pistas vuelven a la fila 0 antes que el resto. SAMPLE no tiene cadenas.
 
 Todos salen idénticos byte a byte con el binario nativo y con el aarch64 emulado (`just run-arm render`).
 
+### Batería, volumen y mono/estéreo
+
+A la derecha de la barra de título, siempre visibles: **batería** (pila con el nivel y `%`; verde cargando, rojo con
+15 % o menos) y **volumen** (parlante y `%`), que se resalta en ámbar 1,5 s después de cada pulsación de los botones
+de volumen. Tienen su lugar reservado: lo demás del título (contexto, BPM, proyecto, octava, CPU) se recorta antes,
+con la regla de siempre. Con la Frase y la fuente de 12×24, el contexto pierde "fila NN"; con la de 8×16, la Frase
+deja de mostrar el proyecto y la octava (el BPM sigue).
+
+El volumen y el modo salen de `/run/rgb20s-audio/state`, que publica el servicio
+[rgb20s-audio](../rgb20s-audio/README.md) ([formato](../rgb20s-common/README.md#estado-del-audio)); sin el servicio
+no se muestra el volumen. La batería se relee cada 15 s. Todo en el hilo de la interfaz (un `stat` cada 100 ms).
+
+**Cambio de mono/estéreo en caliente**: al ver el modo nuevo, la app cierra el stream de cpal, llama a
+`alsa::config::update_free_global()` (alsa-lib cachea la configuración por proceso) y abre uno nuevo, con un
+`Processor` y un `Engine` nuevos; el `EngineMirror` se reinicia para mandarle el proyecto entero. Si estaba sonando,
+la reproducción **vuelve a empezar** desde el principio de su modo (canción, loop...) y se oye un corte breve. El
+pie muestra "audio en mono (parlante)" o "audio en estéreo (auriculares)"; si no se puede reabrir, el error. El
+log dice cuánto tardó (`audio: reabierto en stereo (N ms)`). No toca el hilo de audio: todo pasa en la interfaz.
+Con `GROOVEBOX_AUDIO=0` o `null` no se reabre nada.
+
+Probar en el simulador con un estado falso (`RGB20S_AUDIO_STATE`) y una batería falsa (`GROOVEBOX_POWER_SUPPLY`,
+carpeta con `bat/type` = `Battery`, `bat/capacity` y `bat/status`); el estado se cambia desde otra terminal con
+un renombrado (`printf ... > st.n && mv st.n st`).
+
 ## Estructura
 
 | Archivo | Contenido |
@@ -327,6 +351,7 @@ Todos salen idénticos byte a byte con el binario nativo y con el aarch64 emulad
 | `src/script.rs` | Guion de input |
 | `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), modales de archivo (`files.rs`) |
 | `src/audio.rs` | Salida con cpal (48 kHz f32 preferido) o backend nulo; `Processor`: lo que corre en el callback (comandos, render, conversión, medición, eventos de carga y cabezales) |
+| `../rgb20s-common` | Batería y estado del servicio de audio (compartido con el launcher) |
 | `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó |
 | `src/demo.rs` | Proyecto de demostración (render, bench y `GROOVEBOX_DEMO=1`) |
 | `src/engine/mod.rs` | `Engine`: comandos, eventos, render con disparos en la muestra exacta, `note_on`, mezcla por pista, master con soft clip. Sin cpal |
@@ -354,6 +379,8 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan d
 | `rtrb 0.3` | Colas SPSC sin locks: comandos interfaz → motor y eventos motor → interfaz |
 | `hound 3.5` | Escribir WAV (render offline) |
 | `serde 1` + `toml 1` | Leer `infra/sim/keymap.toml` (luego, la config de botones) |
+| `rgb20s-common` (ruta) | Batería y estado del audio, compartidos con el launcher y el servicio |
+| `alsa 0.11` (solo Linux) | `config::update_free_global` para el cambio mono/estéreo; es la misma versión que ya trae cpal |
 | `ron 0.12` | Proyecto y `config.ron` en RON ([ADR 0004](../../docs/decisions/0004-formato-de-proyecto-ron.md)); trae `bitflags`, `typeid` y `unicode-ident` |
 
 ## Desvíos respecto de la spec

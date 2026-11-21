@@ -11,3 +11,10 @@ rtrb = "0.3"
 sdl2 = { version = "0.39", default-features = false }
 serde = { version = "1", features = ["derive"] }
 toml = "1.2.1"
+# Batería y estado del servicio de audio (rgb20s-audio), compartidos con el launcher
+rgb20s-common = { path = "../rgb20s-common" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Solo `config::update_free_global`, para tomar el modo mono/estéreo al reabrir el audio.
+# Es la misma versión que ya trae cpal: no agrega código nuevo al build.
+alsa = "0.11"

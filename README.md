@@ -73,11 +73,14 @@ Las reglas de delegación están en `CLAUDE.md`. Las skills del proyecto están 
   - [0013 — Tantas ranuras de fundido como voces en la bolsa](docs/decisions/0013-ranuras-de-fundido.md) (aceptada)
   - [0014 — Arrancar en un launcher propio en tty1, con un wrapper de sesión](docs/decisions/0014-sesion-launcher-en-tty1.md) (propuesta)
   - [0015 — Splash de arranque: logo propio en el kernel y un puente DRM en userspace](docs/decisions/0015-splash-de-arranque-logo-del-kernel-y-drm.md) (propuesta)
+  - [0016 — Un servicio de sistema en Rust maneja el volumen y mezcla a mono en ALSA](docs/decisions/0016-servicio-de-audio-del-sistema.md) (propuesta)
 - [Entorno de desarrollo: justfile, compilación cruzada, simulador y deploy](infra/README.md)
 - [Proyectos](projects/README.md)
   - [launcher: menú al prender la consola](projects/launcher/README.md)
   - [linux-image: imagen de Arch Linux ARM](projects/linux-image/README.md)
     - [splash de arranque "KingaGroove"](projects/linux-image/splash/README.md)
+  - [rgb20s-audio: botones de volumen y modo mono/estéreo](projects/rgb20s-audio/README.md)
+  - [rgb20s-common: estado del audio y batería, compartidos por las apps](projects/rgb20s-common/README.md)
 
 ## Convenciones
 

@@ -12,6 +12,9 @@ use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 
+use rgb20s_common::audio_state::AudioState;
+use rgb20s_common::battery::Battery;
+
 use crate::app::{App, FontSize, Screen};
 use crate::input::Button;
 use crate::model::TrackKind;
@@ -77,7 +80,21 @@ pub struct View {
     /// `(x, y)` de los sticks izquierdo y derecho, en -1..=1.
     pub sticks: [(f32, f32); 2],
     pub now: u64,
+    pub system: SystemStatus,
 }
+
+/// Batería y volumen del sistema, a la derecha de la barra de título.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SystemStatus {
+    pub battery: Option<Battery>,
+    /// Estado del servicio `rgb20s-audio` (None si no está).
+    pub audio: Option<AudioState>,
+    /// Hubo una pulsación de volumen o un cambio de modo hace poco: se resalta.
+    pub highlight: bool,
+}
+
+/// Carga desde la que la batería se dibuja como baja.
+const LOW_BATTERY: u8 = 15;
 
 impl View {
     pub fn is_held(&self, b: Button) -> bool {
@@ -92,6 +109,7 @@ pub struct Painter<'a, 't> {
     /// Ancho y alto de la celda de la fuente actual.
     pub cw: i32,
     pub ch: i32,
+    system: SystemStatus,
 }
 
 impl Painter<'_, '_> {
@@ -194,7 +212,94 @@ pub fn title_height(p: &Painter) -> i32 {
     p.ch + 8
 }
 
-/// Barra de título: nombre de la pantalla, contexto y, a la derecha, lo que entre de `right`.
+/// Partes del indicador del sistema (batería y volumen), en el orden en que se dibujan.
+fn system_parts(s: &SystemStatus) -> Vec<(SystemIcon, String)> {
+    let mut parts = Vec::new();
+    if let Some(b) = s.battery {
+        parts.push((SystemIcon::Battery(b), format!("{}%", b.percent)));
+    }
+    if let Some(a) = s.audio {
+        parts.push((SystemIcon::Volume, format!("{}%", a.volume_pct)));
+    }
+    parts
+}
+
+#[derive(Clone, Copy)]
+enum SystemIcon {
+    Battery(Battery),
+    Volume,
+}
+
+/// Ancho de un ícono: dos celdas de la fuente (el espacio de separación incluido).
+fn icon_width(p: &Painter) -> i32 {
+    2 * p.cw
+}
+
+/// Columnas que ocupa el indicador del sistema (0 si no hay nada que mostrar).
+fn system_cols(p: &Painter) -> usize {
+    let parts = system_parts(&p.system);
+    let chars: usize = parts.iter().map(|(_, t)| 2 + t.chars().count()).sum();
+    chars + parts.len().saturating_sub(1)
+}
+
+/// Dibuja el indicador del sistema terminando en `right`.
+fn system_status(p: &mut Painter, right: i32, y: i32) -> R {
+    let s = p.system;
+    let parts = system_parts(&s);
+    let mut x = right - system_cols(p) as i32 * p.cw;
+    for (i, (icon, text)) in parts.iter().enumerate() {
+        if i > 0 {
+            x += p.cw;
+        }
+        let w = icon_width(p) + p.text_width(text);
+        let (fg, bg) = match icon {
+            SystemIcon::Battery(b) if b.charging => (theme::GOOD, None),
+            SystemIcon::Battery(b) if b.percent <= LOW_BATTERY => (theme::WARN, None),
+            SystemIcon::Battery(_) => (theme::DIM, None),
+            SystemIcon::Volume if s.highlight => (theme::BG, Some(theme::ACCENT)),
+            SystemIcon::Volume => (theme::DIM, None),
+        };
+        if let Some(bg) = bg {
+            p.fill(x - 3, y, w + 6, p.ch, bg)?;
+        }
+        match icon {
+            SystemIcon::Battery(b) => battery_icon(p, x, y, b.percent, fg)?,
+            SystemIcon::Volume => speaker_icon(p, x, y, fg)?,
+        }
+        p.text(x + icon_width(p), y, text, fg)?;
+        x += w;
+    }
+    Ok(())
+}
+
+/// Pila horizontal con la carga como relleno, centrada en la celda.
+fn battery_icon(p: &mut Painter, x: i32, y: i32, percent: u8, color: Color) -> R {
+    let h = p.ch / 2;
+    let w = icon_width(p) - p.cw / 2 - 2;
+    let top = y + (p.ch - h) / 2;
+    p.outline(x, top, w, h, 1, color)?;
+    p.fill(x + w, top + h / 4, 2, h - 2 * (h / 4), color)?;
+    let inner = w - 4;
+    let level = (inner * i32::from(percent.min(100)) + 50) / 100;
+    p.fill(x + 2, top + 2, level.max(1), h - 4, color)
+}
+
+/// Parlante: un cuadrado y un cono que se abre hacia la derecha.
+fn speaker_icon(p: &mut Painter, x: i32, y: i32, color: Color) -> R {
+    let h = p.ch / 2;
+    let mid = y + p.ch / 2;
+    let body = (h / 3).max(2);
+    p.fill(x + 1, mid - body / 2, body, body, color)?;
+    let cone = icon_width(p) - p.cw / 2 - body - 2;
+    for i in 0..cone {
+        let half = body / 2 + (h / 2 - body / 2) * i / cone.max(1);
+        p.fill(x + 1 + body + i, mid - half, 1, 2 * half + 1, color)?;
+    }
+    Ok(())
+}
+
+/// Barra de título: nombre de la pantalla, contexto y, a la derecha, lo que entre de `right` y
+/// el indicador del sistema (batería y volumen), que tiene su lugar reservado.
 pub fn title_bar(p: &mut Painter, screen: Screen, context: &str, right: &[impl AsRef<str>]) -> R {
     let h = title_height(p);
     p.fill(0, 0, WIDTH, h, theme::PANEL)?;
@@ -203,7 +308,9 @@ pub fn title_bar(p: &mut Painter, screen: Screen, context: &str, right: &[impl A
     let name = screen.title();
     let x = p.text(8, y, name, theme::ACCENT)?;
     let used = name.chars().count() + 2;
-    let cols = p.cols() - 2;
+    let system = system_cols(p);
+    system_status(p, WIDTH - 8, y)?;
+    let cols = p.cols() - 2 - if system > 0 { system + 2 } else { 0 };
     let context = fit(context, cols.saturating_sub(used));
     p.text(x + 2 * p.cw, y, &context, theme::TEXT)?;
     let used = used + context.chars().count() + 2;
@@ -222,7 +329,12 @@ pub fn title_bar(p: &mut Painter, screen: Screen, context: &str, right: &[impl A
         text = candidate;
     }
     let w = p.text_width(&text);
-    p.text(WIDTH - 8 - w, y, &text, theme::DIM)?;
+    let end = if system > 0 {
+        WIDTH - 8 - (system as i32 + 2) * p.cw
+    } else {
+        WIDTH - 8
+    };
+    p.text(end - w, y, &text, theme::DIM)?;
     Ok(())
 }
 
@@ -394,6 +506,7 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, app: &App, view: &View
         large,
         cw,
         ch,
+        system: view.system,
     };
     // El editor de nombres y el navegador ocupan toda la pantalla; el diálogo va encima.
     if files::draw_full(&mut p, app, view)? {

@@ -5,8 +5,10 @@ use sdl2::rect::Rect;
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 
+use rgb20s_common::audio_state::AudioState;
+use rgb20s_common::battery::Battery;
+
 use crate::apps::{AppEntry, Entry};
-use crate::battery::Battery;
 use crate::font::{BitmapFont, FontAtlas, SPLEEN_8X16, SPLEEN_12X24};
 
 pub const WIDTH: i32 = 640;
@@ -63,7 +65,21 @@ pub struct Screen<'a> {
     pub battery: Option<Battery>,
     /// Aviso abajo de la lista (error de `apps.toml`, app que no existe).
     pub message: Option<&'a str>,
+    /// Barra de volumen superpuesta (unos segundos después de cada pulsación).
+    pub volume: Option<VolumeOverlay>,
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct VolumeOverlay {
+    pub state: AudioState,
+    /// El último cambio fue de mono/estéreo: se resalta el modo.
+    pub mode_changed: bool,
+}
+
+const OVERLAY_W: i32 = 400;
+const OVERLAY_H: i32 = 92;
+/// Un segmento por paso de 3 dB (5 %).
+const OVERLAY_SEGMENTS: i32 = 20;
 
 fn fill(canvas: &mut WindowCanvas, x: i32, y: i32, w: i32, h: i32, color: Color) -> R {
     canvas.set_draw_color(color);
@@ -180,6 +196,71 @@ pub fn draw(canvas: &mut WindowCanvas, fonts: &mut Fonts, s: &Screen) -> R {
     ] {
         x = fonts.small.draw(canvas, x, fy, text, color)?;
     }
+    if let Some(v) = s.volume {
+        volume_overlay(canvas, fonts, v)?;
+    }
+    Ok(())
+}
+
+/// Segmentos encendidos de la barra para un porcentaje (alguno, si no es 0 %).
+fn lit_segments(pct: u8) -> i32 {
+    let lit = (i32::from(pct) * OVERLAY_SEGMENTS + 50) / 100;
+    if pct > 0 { lit.max(1) } else { 0 }
+}
+
+/// Panel centrado: "VOLUMEN" y el modo arriba, el porcentaje grande y la barra por segmentos.
+fn volume_overlay(canvas: &mut WindowCanvas, fonts: &mut Fonts, v: VolumeOverlay) -> R {
+    let (lw, lh) = fonts.large.cell();
+    let (sw, sh) = fonts.small.cell();
+    let (x0, y0) = ((WIDTH - OVERLAY_W) / 2, (HEIGHT - OVERLAY_H) / 2);
+    fill(canvas, x0, y0, OVERLAY_W, OVERLAY_H, theme::PANEL)?;
+    for (x, y, w, h) in [
+        (x0, y0, OVERLAY_W, 2),
+        (x0, y0 + OVERLAY_H - 2, OVERLAY_W, 2),
+        (x0, y0, 2, OVERLAY_H),
+        (x0 + OVERLAY_W - 2, y0, 2, OVERLAY_H),
+    ] {
+        fill(canvas, x, y, w, h, theme::ACCENT)?;
+    }
+
+    let pad = 16;
+    let top = y0 + 12;
+    fonts
+        .small
+        .draw(canvas, x0 + pad, top, "VOLUMEN", theme::DIM)?;
+    let mode = v.state.mode.label();
+    let mode_w = mode.chars().count() as i32 * sw;
+    let mode_x = x0 + OVERLAY_W - pad - mode_w;
+    if v.mode_changed {
+        fill(canvas, mode_x - 4, top, mode_w + 8, sh, theme::ACCENT)?;
+        fonts.small.draw(canvas, mode_x, top, mode, theme::BG)?;
+    } else {
+        fonts.small.draw(canvas, mode_x, top, mode, theme::TEXT)?;
+    }
+
+    // Porcentaje con ancho fijo ("100%") para que la barra no se mueva.
+    let row_y = top + sh + 14;
+    let pct = format!("{:>3}%", v.state.volume_pct);
+    let bar_x = fonts
+        .large
+        .draw(canvas, x0 + pad, row_y, &pct, theme::ACCENT)?
+        + lw;
+    let bar_w = x0 + OVERLAY_W - pad - bar_x;
+    let gap = 3;
+    let seg_w = (bar_w - gap * (OVERLAY_SEGMENTS - 1)) / OVERLAY_SEGMENTS;
+    let seg_h = lh - 6;
+    let lit = lit_segments(v.state.volume_pct);
+    for i in 0..OVERLAY_SEGMENTS {
+        let color = if i < lit { theme::ACCENT } else { theme::LINE };
+        fill(
+            canvas,
+            bar_x + i * (seg_w + gap),
+            row_y + 3,
+            seg_w,
+            seg_h,
+            color,
+        )?;
+    }
     Ok(())
 }
 
@@ -198,10 +279,20 @@ mod tests {
     }
 
     #[test]
+    fn bar_segments_follow_percent() {
+        assert_eq!(lit_segments(0), 0);
+        assert_eq!(lit_segments(1), 1);
+        assert_eq!(lit_segments(5), 1);
+        assert_eq!(lit_segments(50), 10);
+        assert_eq!(lit_segments(66), 13);
+        assert_eq!(lit_segments(100), OVERLAY_SEGMENTS);
+    }
+
+    #[test]
     fn help_glyphs_exist() {
         let font = BitmapFont::parse_bdf(SPLEEN_8X16).unwrap();
         let q = font.glyph_index('?');
-        for c in "↑↓·".chars() {
+        for c in "↑↓·ÉVOLUMEN%".chars() {
             assert_ne!(font.glyph_index(c), q, "falta {c:?}");
         }
     }

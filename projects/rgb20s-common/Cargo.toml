@@ -1,0 +1,9 @@
+[package]
+name = "rgb20s-common"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Solo para que rgb20s-audio lea `Mode` de su config; los otros crates ya lo usan.
+serde = { version = "1", features = ["derive"] }

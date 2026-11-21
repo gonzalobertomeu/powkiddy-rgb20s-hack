@@ -18,6 +18,12 @@ Arranca con la última app elegida seleccionada (`$XDG_STATE_HOME/launcher/last`
 `~/.local/state/launcher/last`; se guarda el nombre). Reiniciar y Apagar no se recuerdan.
 Arriba a la derecha, la carga de la batería (`/sys/class/power_supply/*` con `type` = `Battery`; `+` = cargando).
 
+**Volumen**: con el servicio [rgb20s-audio](../rgb20s-audio/README.md) instalado, cada pulsación de los botones de
+volumen (o el cambio mono/estéreo) muestra 1,5 s un panel centrado con el porcentaje, una barra de 20 segmentos
+(uno por paso de 3 dB) y MONO/ESTÉREO (resaltado si fue lo que cambió). Se lee `/run/rgb20s-audio/state` con un
+`stat` cada 100 ms en el mismo bucle ([rgb20s-common](../rgb20s-common/README.md)); sin el servicio no se muestra
+nada.
+
 Los botones frontales siguen la disposición **Nintendo** de la consola: A a la derecha, B abajo, Y a la
 izquierda y X arriba. Verificado en el hardware (2026-11-20): el driver entrega A y B con los nombres de
 Xbox de SDL (A abajo, B derecha), pero X e Y ya en su lugar, así que el código intercambia **solo A↔B**
@@ -74,10 +80,19 @@ APP=launcher just build-arm && APP=launcher just check-arm
 Variables: `RGB20S_SIM`, `RGB20S_SCALE`, `RGB20S_KEYMAP` (como el groovebox), `LAUNCHER_APPS`,
 `LAUNCHER_REPEAT=delay,intervalo` (ms, defecto 300,90), `LAUNCHER_POWER_SUPPLY`,
 `LAUNCHER_INPUT=down,a` (toques al arrancar, para probar sin teclado) y
-`LAUNCHER_SHOT=captura.bmp` (guarda el primer cuadro y sale). Captura sin ventana:
+`LAUNCHER_SHOT=captura.bmp` (guarda el primer cuadro y sale; con `LAUNCHER_SHOT_AT=ms`, el primero desde
+ese momento) y `RGB20S_AUDIO_STATE` (estado del audio; defecto `/run/rgb20s-audio/state`). Captura sin ventana:
 
 ```sh
 SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 LAUNCHER_SHOT=/tmp/l.bmp cargo run
+```
+
+Barra de volumen en el simulador, con un estado falso que cambia a los 0,4 s:
+
+```sh
+printf 'volume_pct=61\nmode=mono\nseq=1\n' > /tmp/st
+(sleep 0.4; printf 'volume_pct=66\nmode=mono\nseq=2\n' > /tmp/st.n && mv /tmp/st.n /tmp/st) &
+SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 RGB20S_AUDIO_STATE=/tmp/st LAUNCHER_SHOT=/tmp/v.bmp LAUNCHER_SHOT_AT=900 cargo run
 ```
 
 El wrapper se prueba fuera de la consola con `LAUNCHER_BIN`, `RGB20S_SESSION_MAX_LOOPS=1` y

@@ -170,8 +170,10 @@ dependencies = [
 name = "groovebox"
 version = "0.1.0"
 dependencies = [
+ "alsa",
  "cpal",
  "hound",
+ "rgb20s-common",
  "ron",
  "rtrb",
  "sdl2",
@@ -492,6 +494,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rgb20s-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

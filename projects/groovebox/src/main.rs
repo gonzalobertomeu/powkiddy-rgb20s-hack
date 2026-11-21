@@ -18,6 +18,8 @@
 //! - `GROOVEBOX_DATA`: carpeta de datos (defecto `$XDG_DATA_HOME/groovebox` o
 //!   `~/.local/share/groovebox`): `config.ron` y `proyectos/<nombre>/proyecto.ron`.
 //! - `GROOVEBOX_SCRIPT=archivo`: guion de input y capturas (ver `script.rs`).
+//! - `GROOVEBOX_POWER_SUPPLY`: carpeta de baterías (defecto `/sys/class/power_supply`).
+//! - `RGB20S_AUDIO_STATE`: estado del servicio de audio (defecto `/run/rgb20s-audio/state`).
 
 #[cfg(test)]
 mod alloc_check;
@@ -39,7 +41,7 @@ mod ui;
 
 use std::collections::HashSet;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -54,6 +56,9 @@ use engine::Event as EngineEvent;
 use gestures::{GestureConfig, Gestures};
 use input::{Button, Keymap, Sticks, Triggers};
 use model::Project;
+use rgb20s_common::audio_state::Mode;
+use rgb20s_common::battery::{self, Battery};
+use rgb20s_common::watch::{StateWatcher, Update};
 
 const WIDTH: u32 = ui::WIDTH as u32;
 const HEIGHT: u32 = ui::HEIGHT as u32;
@@ -65,6 +70,9 @@ const IDLE_WAIT_MS: u64 = 100;
 const PLAYING_WAIT_MS: u64 = 8;
 /// Cada cuánto se escribe la carga del motor en el log.
 const LOAD_LOG_MS: u64 = 10_000;
+const BATTERY_REFRESH_MS: u64 = 15_000;
+/// Cuánto se resalta el volumen del título después de una pulsación.
+const VOLUME_HIGHLIGHT_MS: u64 = 1_500;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AudioMode {
@@ -83,6 +91,7 @@ struct Config {
     audio: AudioMode,
     demo: bool,
     script: Option<Vec<script::Step>>,
+    power_supply: PathBuf,
 }
 
 fn env_parse<T: std::str::FromStr>(name: &str) -> Option<T> {
@@ -150,6 +159,9 @@ impl Config {
             },
             demo: std::env::var("GROOVEBOX_DEMO").is_ok_and(|v| v == "1"),
             script,
+            power_supply: std::env::var_os("GROOVEBOX_POWER_SUPPLY")
+                .filter(|v| !v.is_empty())
+                .map_or_else(|| PathBuf::from(battery::POWER_SUPPLY_DIR), PathBuf::from),
         }
     }
 }
@@ -188,6 +200,24 @@ fn sync_engine(out: &mut audio::AudioOutput, mirror: &mut sync::EngineMirror, ap
     mirror.sync(&app.project, app.transport, &mut |cmd| {
         out.commands.push(cmd).is_ok()
     });
+}
+
+/// Cierra el audio y lo vuelve a abrir releyendo la configuración de ALSA, para tomar el modo
+/// mono/estéreo nuevo. El motor arranca de cero: quien llama tiene que reiniciar el `EngineMirror`
+/// para que le mande el proyecto entero (si estaba sonando, vuelve a empezar la reproducción).
+fn reopen_audio(audio: &mut Option<audio::AudioOutput>, frames: u32) -> Result<(), Box<dyn Error>> {
+    // Primero se cierra el PCM viejo (se detiene y se une el hilo de cpal).
+    drop(audio.take());
+    audio::reload_config()?;
+    *audio = Some(audio::start(frames)?);
+    Ok(())
+}
+
+fn mode_message(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Mono => "audio en mono (parlante)",
+        Mode::Stereo => "audio en estéreo (auriculares)",
+    }
 }
 
 /// Texto de la carga que se muestra: redibujar solo si cambia.
@@ -287,7 +317,13 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut sticks = Sticks::new(STICK_DEAD_ZONE);
     let mut triggers = Triggers::default();
     let mut events = sdl.event_pump()?;
+    let mut battery: Option<Battery> = battery::read(&config.power_supply);
+    let mut battery_at = 0;
+    let mut audio_state = StateWatcher::from_env();
+    let mut highlight_until: Option<u64> = None;
     let started = Instant::now();
+    // Para el log del período real: se reinicia al reabrir el audio.
+    let mut audio_started = Instant::now();
     let now_ms = || started.elapsed().as_millis() as u64;
     let mut logged_period = false;
     let mut reported_errors = 0;
@@ -304,13 +340,15 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     while !app.quit {
         let now = now_ms();
-        let deadline = match (
+        let deadline = [
             gestures.next_deadline(),
             script.as_ref().and_then(script::Runner::next_deadline),
-        ) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+            highlight_until,
+            Some(audio_state.next_poll()),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         let idle = if app.transport.is_some() || app.playhead.playing {
             PLAYING_WAIT_MS
         } else {
@@ -449,6 +487,51 @@ fn run() -> Result<(), Box<dyn Error>> {
             dirty = true;
         }
 
+        if now >= battery_at + BATTERY_REFRESH_MS {
+            battery_at = now;
+            let fresh = battery::read(&config.power_supply);
+            dirty |= fresh != battery;
+            battery = fresh;
+        }
+        match audio_state.poll(now) {
+            Some(Update::Changed { mode, .. }) => {
+                highlight_until = Some(now + VOLUME_HIGHLIGHT_MS);
+                dirty = true;
+                if mode && let Some(state) = audio_state.state() {
+                    let mut text = mode_message(state.mode).to_string();
+                    let mut warn = false;
+                    if config.audio == AudioMode::Device {
+                        let t0 = Instant::now();
+                        match reopen_audio(&mut audio, config.audio_frames) {
+                            Ok(()) => {
+                                println!(
+                                    "audio: reabierto en {} ({} ms)",
+                                    state.mode,
+                                    t0.elapsed().as_millis()
+                                );
+                                mirror = sync::EngineMirror::new();
+                                reported_errors = 0;
+                                logged_period = false;
+                                audio_started = Instant::now();
+                            }
+                            Err(e) => {
+                                println!("audio: no pude reabrirlo en {} ({e})", state.mode);
+                                text = format!("no pude reabrir el audio: {e}");
+                                warn = true;
+                            }
+                        }
+                    }
+                    app.notify(text, warn, now);
+                }
+            }
+            Some(Update::Appeared | Update::Gone) => dirty = true,
+            None => {}
+        }
+        if highlight_until.is_some_and(|until| now >= until) {
+            highlight_until = None;
+            dirty = true;
+        }
+
         if let Some(out) = audio.as_mut() {
             sync_engine(out, &mut mirror, &app);
             while let Ok(event) = out.events.pop() {
@@ -485,7 +568,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     w.notes
                 );
             }
-            if !logged_period && started.elapsed() > Duration::from_millis(500) {
+            if !logged_period && audio_started.elapsed() > Duration::from_millis(500) {
                 logged_period = true;
                 let frames = out.stats.last_frames.load(Ordering::Relaxed);
                 let calls = out.stats.callbacks.load(Ordering::Relaxed);
@@ -511,6 +594,11 @@ fn run() -> Result<(), Box<dyn Error>> {
                     sticks.value(input::Stick::Right),
                 ],
                 now,
+                system: ui::SystemStatus {
+                    battery,
+                    audio: audio_state.state(),
+                    highlight: highlight_until.is_some(),
+                },
             };
             ui::draw(&mut canvas, &mut fonts, &app, &view)?;
             if let Some(path) = shot.take() {

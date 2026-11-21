@@ -1,0 +1,25 @@
+# Configuración de rgb20s-audio (/etc/rgb20s-audio.toml). Todos los campos son opcionales;
+# los valores comentados son los de por defecto. Después de editar:
+#   sudo systemctl restart rgb20s-audio
+
+# card = "0"                         # tarjeta ALSA (índice o id): hw:<card>
+# input_device = "gpio-keys-vol"     # nombre evdev de los botones de volumen
+# volume_control = "Master"          # se escribe solo "Master Playback Volume"
+# volume_step_db = 3.0               # paso por pulsación (≈ 8 valores de 0..255)
+# mux_control = "Playback Mux"       # se fuerza al arrancar ("" = no tocar; SPK no suena)
+# mux_item = "HP"
+# gesture_window_ms = 150            # ventana para apretar los dos botones a la vez
+# store_delay_ms = 2000              # alsactl store tras el último cambio de volumen
+# alsactl = "/usr/bin/alsactl"
+# default_mode = "mono"              # mono | stereo, si no hay estado guardado
+# state_dir = "/var/lib/rgb20s-audio"
+# alsa_conf_path = "/var/lib/alsa/conf.d/60-rgb20s-audio.conf"
+# pcm_slave = "plughw:0,0"           # destino del default (por defecto plughw:<card>,0)
+
+[jack]
+# Hoy la detección de auriculares no funciona (el switch queda siempre en 1): desactivado.
+# Con enabled = true, al enchufar auriculares pasa a estéreo y al sacarlos a mono
+# (los botones siguen pudiendo cambiar el modo hasta el próximo cambio del jack).
+# enabled = false
+# control = "Headphones Jack"        # control booleano de interfaz CARD
+# inserted_value = true              # valor del control con auriculares (polaridad)

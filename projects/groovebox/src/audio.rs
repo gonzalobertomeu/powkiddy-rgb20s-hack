@@ -140,6 +140,16 @@ pub fn start(frames: u32) -> Result<AudioOutput, Box<dyn Error>> {
     })
 }
 
+/// Descarta la configuración de ALSA que alsa-lib guarda en caché en el proceso, para que el
+/// próximo `start` relea los archivos (el modo mono/estéreo de `rgb20s-audio` vive en
+/// `/var/lib/alsa/conf.d`, que alsa-lib no vuelve a mirar por su cuenta). Llamar con el stream
+/// anterior ya cerrado.
+pub fn reload_config() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    alsa::config::update_free_global().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Backend sin dispositivo: llama al `Processor` cada `frames` muestras de tiempo real.
 pub fn start_null(frames: u32) -> Result<AudioOutput, Box<dyn Error>> {
     let frames = frames.clamp(16, SCRATCH_FRAMES as u32) as usize;

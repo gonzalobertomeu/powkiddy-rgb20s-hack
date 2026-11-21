@@ -306,6 +306,16 @@ impl App {
             .filter(|m| now.saturating_sub(m.at_ms) < MESSAGE_MS)
     }
 
+    /// Aviso que viene de afuera de los gestos (por ejemplo, del sistema de audio).
+    pub fn notify(&mut self, text: impl Into<String>, warn: bool, now: u64) {
+        self.now = now;
+        if warn {
+            self.warn(text);
+        } else {
+            self.info(text);
+        }
+    }
+
     fn info(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),

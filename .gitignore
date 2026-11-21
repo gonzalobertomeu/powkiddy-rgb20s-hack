@@ -13,3 +13,6 @@ infra/build/
 
 # Imagen de Arch Linux ARM: claves SSH y ajustes locales (no se commitean)
 infra/image/local/
+
+# Worktrees de agentes de Claude Code
+.claude/worktrees/

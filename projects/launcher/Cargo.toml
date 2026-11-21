@@ -7,3 +7,5 @@ edition = "2024"
 sdl2 = { version = "0.39", default-features = false }
 serde = { version = "1", features = ["derive"] }
 toml = "1.2.1"
+# Batería y estado del audio (servicio rgb20s-audio), compartidos con el groovebox
+rgb20s-common = { path = "../rgb20s-common" }

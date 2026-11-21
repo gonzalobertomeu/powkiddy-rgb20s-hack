@@ -13,11 +13,12 @@
 //! - `LAUNCHER_REPEAT=delay,intervalo`: repetición de la cruceta en ms (defecto 300,90).
 //! - `LAUNCHER_POWER_SUPPLY`: carpeta de baterías (defecto `/sys/class/power_supply`).
 //! - `LAUNCHER_SHOT=archivo.bmp`: guarda una captura del primer cuadro y sale (código 3).
+//!   `LAUNCHER_SHOT_AT=ms`: en lugar del primero, el primer cuadro desde ese momento.
+//! - `RGB20S_AUDIO_STATE`: estado del servicio de audio (defecto `/run/rgb20s-audio/state`).
 //! - `LAUNCHER_INPUT=down,down,a`: toques al arrancar (nombres de `infra/sim/keymap.toml`), para
 //!   probar sin teclado; se aplican antes del primer cuadro.
 
 mod apps;
-mod battery;
 mod font;
 mod input;
 mod nav;
@@ -38,6 +39,8 @@ use sdl2::surface::Surface;
 use apps::{AppEntry, Choice, Entry};
 use input::{Button, Keymap};
 use nav::{Menu, Repeat};
+use rgb20s_common::battery;
+use rgb20s_common::watch::{StateWatcher, Update};
 
 const WIDTH: u32 = ui::WIDTH as u32;
 const HEIGHT: u32 = ui::HEIGHT as u32;
@@ -49,6 +52,8 @@ const BATTERY_REFRESH_MS: u64 = 15_000;
 /// Cuadros extra después de cada cambio (ver `flush` en el bucle) y espera entre ellos.
 const FLUSH_FRAMES: u32 = 2;
 const FLUSH_WAIT_MS: u64 = 16;
+/// Cuánto queda la barra de volumen en pantalla después de la última pulsación.
+const VOLUME_OVERLAY_MS: u64 = 1_500;
 
 struct Args {
     choice_file: Option<PathBuf>,
@@ -79,6 +84,7 @@ struct Config {
     repeat_interval_ms: u64,
     power_supply: PathBuf,
     shot: Option<PathBuf>,
+    shot_at: u64,
     input: Vec<Button>,
 }
 
@@ -125,6 +131,10 @@ impl Config {
             power_supply: env_path("LAUNCHER_POWER_SUPPLY")
                 .unwrap_or_else(|| PathBuf::from(battery::POWER_SUPPLY_DIR)),
             shot: env_path("LAUNCHER_SHOT"),
+            shot_at: std::env::var("LAUNCHER_SHOT_AT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
             input: std::env::var("LAUNCHER_INPUT")
                 .unwrap_or_default()
                 .split(',')
@@ -294,6 +304,10 @@ fn run(
     let now_ms = || started.elapsed().as_millis() as u64;
     let mut battery = battery::read(&config.power_supply);
     let mut battery_at = 0;
+    let mut audio = StateWatcher::from_env();
+    // Barra de volumen: hasta cuándo se ve y si el último cambio fue de modo.
+    let mut overlay_until: Option<u64> = None;
+    let mut mode_changed = false;
     let mut dirty = true;
     // Con KMSDRM, SDL muestra cada cuadro recién en el `present` siguiente: después de cada
     // cambio se dibujan FLUSH_FRAMES cuadros más para que el último estado llegue a la pantalla.
@@ -305,10 +319,15 @@ fn run(
 
     loop {
         let now = now_ms();
-        let deadline = repeat
+        let mut deadline = repeat
             .deadline()
             .unwrap_or(u64::MAX)
-            .min(battery_at + BATTERY_REFRESH_MS);
+            .min(battery_at + BATTERY_REFRESH_MS)
+            .min(audio.next_poll())
+            .min(overlay_until.unwrap_or(u64::MAX));
+        if config.shot.is_some() {
+            deadline = deadline.min(config.shot_at);
+        }
         let wait = if flush > 0 {
             FLUSH_WAIT_MS
         } else {
@@ -406,12 +425,28 @@ fn run(
             dirty |= fresh != battery;
             battery = fresh;
         }
+        match audio.poll(now) {
+            Some(Update::Changed { mode, .. }) => {
+                overlay_until = Some(now + VOLUME_OVERLAY_MS);
+                mode_changed = mode;
+                dirty = true;
+            }
+            Some(Update::Gone) => {
+                dirty |= overlay_until.take().is_some();
+            }
+            Some(Update::Appeared) | None => {}
+        }
+        if overlay_until.is_some_and(|until| now >= until) {
+            overlay_until = None;
+            dirty = true;
+        }
+        let shoot = config.shot.is_some() && now >= config.shot_at;
 
-        if dirty || flush > 0 {
+        if dirty || flush > 0 || shoot {
             if dirty {
                 flush = FLUSH_FRAMES;
             } else {
-                flush -= 1;
+                flush = flush.saturating_sub(1);
             }
             let screen = ui::Screen {
                 apps,
@@ -420,9 +455,15 @@ fn run(
                 selected: menu.selected(),
                 battery,
                 message: message.as_deref(),
+                volume: overlay_until
+                    .and(audio.state())
+                    .map(|state| ui::VolumeOverlay {
+                        state,
+                        mode_changed,
+                    }),
             };
             ui::draw(&mut canvas, &mut fonts, &screen)?;
-            if let Some(path) = &config.shot {
+            if let Some(path) = config.shot.as_ref().filter(|_| shoot) {
                 save_screenshot(&canvas, path)?;
                 println!("captura: {}", path.display());
                 return Ok(None);

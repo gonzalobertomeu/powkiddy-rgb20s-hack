@@ -1,0 +1,52 @@
+# Audio de la RGB20S: botones de volumen, modo mono/estéreo y Playback Mux en HP.
+# Se instala con install.sh (en la consola, con sudo); uninstall.sh lo saca.
+#
+# Corre como root sin capacidades: los nodos de /dev/snd y /dev/input y /var/lib/alsa son de
+# root, así que alcanza con ser el dueño. alsa-restore.service restaura el volumen al arrancar y
+# lo guarda al apagar; este servicio arranca después y además guarda tras cada cambio.
+
+[Unit]
+Description=Audio de la RGB20S (botones de volumen y modo mono/estéreo)
+After=alsa-restore.service sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rgb20s-audio run
+Restart=on-failure
+RestartSec=3
+SyslogIdentifier=rgb20s-audio
+
+StateDirectory=rgb20s-audio
+# Estado para las apps (/run/rgb20s-audio/state, 0644 por UMask): lo leen el launcher y el
+# groovebox como alarm. Se borra al detener el servicio, y las apps dejan de mostrar el volumen.
+RuntimeDirectory=rgb20s-audio
+RuntimeDirectoryMode=0755
+ReadWritePaths=/var/lib/alsa
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+DevicePolicy=closed
+DeviceAllow=char-alsa rw
+DeviceAllow=char-input r
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target
