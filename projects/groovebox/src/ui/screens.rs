@@ -1,6 +1,7 @@
 //! Canción y Cadena (H5), Proyecto (ajustes y prueba de controles), Instrumento (por ahora solo
 //! las voces, H4) y la pantalla pendiente (Mezcla).
 
+use super::selection::{SELECT, footer_or_selection, selected};
 use super::{
     HEIGHT, Painter, R, View, WIDTH, cursor_color, fit, footer, footer_height, load_text,
     message_line, scroll_start, status_parts, theme, title_bar, title_height,
@@ -24,26 +25,28 @@ fn title(p: &mut Painter, app: &App, context: &str) -> R {
     title_bar(p, app.screen, context, &parts)
 }
 
-const SONG_HELP: [&str; 8] = [
+const SONG_HELP: [&str; 9] = [
     "A poner",
     "2xA nueva",
     "A+Y clonar",
     "A+B borrar",
     "X escuchar",
+    "Y selec.",
+    "Sel+A pegar",
     "L2/R2 página",
     "Start canción",
-    "Sel+Start loop",
 ];
 
-const CHAIN_HELP: [&str; 8] = [
+const CHAIN_HELP: [&str; 9] = [
     "A poner",
     "2xA nueva",
     "A+Y clonar",
     "A+B quitar",
     "X escuchar",
+    "Y selec.",
+    "Sel+A pegar",
     "L2/R2 fila",
     "Start cadena",
-    "Sel+Start loop",
 ];
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -165,6 +168,9 @@ pub fn song(p: &mut Painter, app: &App, view: &View) -> R {
             };
             let x = track_x(t);
             let head = app.head(t).filter(|h| usize::from(h.row) == r);
+            if selected(app, t, r) {
+                p.fill(x - 2, y, 4 * cw + 4, ch, SELECT)?;
+            }
             if current && t == app.track {
                 p.text_inverted(x, y, &text, cursor)?;
             } else {
@@ -228,7 +234,7 @@ pub fn song(p: &mut Painter, app: &App, view: &View) -> R {
     };
     p.text(8, line1 + ch + 2, &fit(&detail, p.cols() - 2), theme::DIM)?;
     message_line(p, line1 + 2 * ch + 4, app, view.now)?;
-    footer(p, app.screen, lines, &SONG_HELP)
+    footer_or_selection(p, app, lines, &SONG_HELP)
 }
 
 /// Cadena de la pista actual en la fila actual: entradas (frase, transposición), cabezal y
@@ -324,6 +330,10 @@ pub fn chain(p: &mut Painter, app: &App, view: &View) -> R {
         } else {
             theme::FAINT
         };
+        if selected(app, 0, k) {
+            let x0 = x_of(phrase_x) - 2;
+            p.fill(x0, y, x_of(transp_x + 5) - x0, ch, SELECT)?;
+        }
         for (col, x, text) in [
             (ChainCol::Phrase, phrase_x, &phrase),
             (ChainCol::Transpose, transp_x + 1, &transpose),
@@ -413,13 +423,15 @@ pub fn chain(p: &mut Painter, app: &App, view: &View) -> R {
     };
     p.text(8, line1 + ch + 2, &fit(hint, p.cols() - 2), theme::FAINT)?;
     message_line(p, line1 + 2 * ch + 4, app, view.now)?;
-    footer(p, app.screen, lines, &CHAIN_HELP)
+    footer_or_selection(p, app, lines, &CHAIN_HELP)
 }
 
-const INSTRUMENT_HELP: [&str; 5] = [
+const INSTRUMENT_HELP: [&str; 7] = [
     "A+cruz voces",
     "A+B por defecto",
     "X escuchar",
+    "Y copiar instr.",
+    "Sel+A pegar instr.",
     "L1/R1 pista",
     "Start frase",
 ];
@@ -433,6 +445,10 @@ pub fn instrument(p: &mut Painter, app: &App, view: &View) -> R {
     let label_x = 8 + 2 * cw;
     let value_x = 8 + 14 * cw;
     let mut y = title_height(p) + 8;
+    // Seleccionado, el instrumento entero: un marco alrededor de sus parámetros.
+    if app.selection.is_some() {
+        p.outline(2, y - 4, WIDTH - 4, 3 * ch + 14, 3, SELECT)?;
+    }
 
     let kind = match inst.patch {
         Patch::Drum(d) => match d.model {
@@ -473,7 +489,7 @@ pub fn instrument(p: &mut Painter, app: &App, view: &View) -> R {
         y += ch;
     }
     message_line(p, y + 4, app, view.now)?;
-    footer(p, app.screen, 2, &INSTRUMENT_HELP)
+    footer_or_selection(p, app, 2, &INSTRUMENT_HELP)
 }
 
 /// Mezcla: llega con el motor (H9).

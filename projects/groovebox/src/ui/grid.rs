@@ -2,9 +2,10 @@
 
 use sdl2::pixels::Color;
 
+use super::selection::{SELECT, footer_or_selection};
 use super::{
-    HEIGHT, Painter, R, View, WIDTH, cursor_color, footer, footer_height, message_line,
-    status_parts, theme, title_bar, title_height,
+    HEIGHT, Painter, R, View, WIDTH, cursor_color, footer_height, message_line, status_parts,
+    theme, title_bar, title_height,
 };
 use crate::app::{App, GridCol};
 use crate::model::{
@@ -21,10 +22,10 @@ const HELP: [&str; 8] = [
     "A+B borrar",
     "A+L1/R1 acorde",
     "X escuchar",
+    "Y selec.",
+    "Sel+A pegar",
     "L2/R2 sección",
     "Start canción",
-    "Sel+Start loop",
-    "Sel+cruz pantalla",
 ];
 
 struct Layout {
@@ -140,6 +141,12 @@ pub fn draw(p: &mut Painter, app: &App, view: &View) -> R {
         if on_row {
             p.fill(0, y, WIDTH, ROW_H, theme::ROW_HI)?;
             p.fill(0, y, 3, ROW_H, cursor)?;
+        }
+        // Selección: un fondo detrás de los bloques de los pasos elegidos.
+        if let Some(a) = app.selection_area().filter(|a| a.ys().contains(&t)) {
+            let x0 = l.step_x(a.x0) - 3;
+            let x1 = l.step_x(a.x1) + l.block_w + 3;
+            p.fill(x0, block_y - 3, x1 - x0, BLOCK_H + 6, SELECT)?;
         }
         let num_color = if on_row { theme::TEXT } else { theme::FAINT };
         p.text(l.label_x, text_y, &format!("{}", t + 1), num_color)?;
@@ -309,7 +316,7 @@ pub fn draw(p: &mut Painter, app: &App, view: &View) -> R {
 
     let lines = 2;
     debug_assert!(line2 + 2 * ch + 4 <= HEIGHT - footer_height(p, lines));
-    footer(p, app.screen, lines, &HELP)
+    footer_or_selection(p, app, lines, &HELP)
 }
 
 fn draw_steps(

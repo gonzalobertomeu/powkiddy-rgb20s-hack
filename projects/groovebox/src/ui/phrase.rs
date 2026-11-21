@@ -1,8 +1,9 @@
 //! Pantalla Frase (spec-ui §4): la frase de la pista actual en la sección, paso por paso.
 
+use super::selection::{SELECT, footer_or_selection, selected};
 use super::{
-    HEIGHT, Painter, R, View, WIDTH, cursor_color, fit, footer, footer_height, message_line,
-    status_parts, theme, title_bar, title_height,
+    HEIGHT, Painter, R, View, WIDTH, cursor_color, fit, footer_height, message_line, status_parts,
+    theme, title_bar, title_height,
 };
 use crate::app::{App, FontSize, PhraseCol};
 use crate::model::{ChordKind, NoteCell, PHRASE_STEPS, TrackKind, gate_label, note_name};
@@ -13,9 +14,9 @@ const HELP: [&str; 8] = [
     "A+L1/R1 acorde",
     "A+Y clonar",
     "X escuchar",
+    "Y selec.",
+    "Sel+A pegar",
     "L2/R2 frase",
-    "Start frase",
-    "Sel+Start loop",
 ];
 
 /// Columna (en caracteres) de cada campo: PASO, NOTA, ACORDE, VEL, LARGO.
@@ -128,6 +129,9 @@ pub fn draw(p: &mut Painter, app: &App, view: &View) -> R {
                 (PhraseCol::Gate, Some(s)) if has_note => (gate_label(s.gate_ticks), theme::TEXT),
                 _ => ("---".to_string(), theme::FAINT),
             };
+            if selected(app, col.index(), i) {
+                p.fill(x_of(x) - 2, y, (width as i32) * cw + 4, ch, SELECT)?;
+            }
             if on_row && col == app.phrase_col {
                 let padded = format!("{text:<width$}");
                 p.text_inverted(x_of(x), y, &padded, cursor)?;
@@ -147,7 +151,10 @@ pub fn draw(p: &mut Painter, app: &App, view: &View) -> R {
         // Con 12×24 entran las 16 filas y una sola línea de pie: el mensaje o el contexto.
         let lines = 1;
         debug_assert!(rows_y0 + 16 * ch <= HEIGHT - footer_height(p, lines));
-        footer(p, app.screen, lines, &[])?;
+        footer_or_selection(p, app, lines, &[])?;
+        if app.selection.is_some() {
+            return Ok(());
+        }
         let y = HEIGHT - footer_height(p, lines) + 4;
         if app.message_at(view.now).is_some() {
             message_line(p, y, app, view.now)?;
@@ -166,7 +173,7 @@ pub fn draw(p: &mut Painter, app: &App, view: &View) -> R {
     p.text(8, line1 + ch + 2, hint, theme::FAINT)?;
     message_line(p, line1 + 2 * ch + 6, app, view.now)?;
     let lines = 2;
-    footer(p, app.screen, lines, &HELP)
+    footer_or_selection(p, app, lines, &HELP)
 }
 
 /// Descripción de la columna bajo el cursor y de sus controles.

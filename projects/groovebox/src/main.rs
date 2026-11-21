@@ -33,6 +33,7 @@ mod model;
 mod offline;
 mod project_file;
 mod script;
+mod selection;
 mod storage;
 mod sync;
 mod ui;

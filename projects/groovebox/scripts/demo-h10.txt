@@ -1,0 +1,126 @@
+# Demo del H10, "variaciones rápidas", con el proyecto demo (GROOVEBOX_DEMO=1): selección en la
+# Grilla (celda → pista), copiar, pegar en otra sección, cortar y volver a pegar, columna VEL de
+# la Frase, entradas de la Cadena pegadas en una fila nueva, una fila de la Canción, un aviso de
+# tipo incompatible e instrumento copiado a otra pista.
+# Uso sin escritorio (con GROOVEBOX_AUDIO=null las ediciones llegan al motor igual):
+#   SDL_VIDEODRIVER=offscreen RGB20S_SIM=1 GROOVEBOX_AUDIO=null GROOVEBOX_DEMO=1 \
+#     GROOVEBOX_DATA=/tmp/gb-h10 GROOVEBOX_SCRIPT=.../demo-h10.txt groovebox
+
+wait 300
+shot h10-grilla.bmp
+
+# Grilla, sección 1: BOMBO, CAJA y HH-CER, pasos 1 a 8 (Y y la cruz extiende desde el ancla)
+tap y
+tap right 7
+tap down 2
+wait 100
+shot h10-grilla-seleccion.bmp
+
+# A copia (y sale del modo selección)
+tap a
+wait 100
+shot h10-grilla-copiado.bmp
+
+# Sección 4 (el relleno), paso 9: Select + A pega 3 pistas × 8 pasos
+tap r2 3
+tap up 2
+tap right
+press select
+tap a
+release select
+wait 100
+shot h10-grilla-pegado.bmp
+
+# SINTE de la sección 4: Y Y = la pista entera; X corta
+tap down 7
+tap y
+tap y
+wait 100
+shot h10-grilla-pista.bmp
+tap x
+wait 100
+shot h10-grilla-cortado.bmp
+# Y se vuelve a pegar en el paso 1
+press b
+tap left
+release b
+press select
+tap a
+release select
+
+# Frase del SINTE en la sección 4: la columna VEL (Y Y) se copia y se pega en la sección 3
+press select
+tap right 2
+release select
+tap right 2
+tap y
+tap y
+wait 100
+shot h10-frase-columna.bmp
+tap a
+tap l2
+press select
+tap a
+release select
+wait 100
+shot h10-frase-pegado.bmp
+
+# Cadena del SINTE (fila 0): toda la cadena (Y Y), A copia; en la fila 3 (nueva, sin cadena)
+# pegar crea la cadena
+press select
+tap left
+release select
+tap y
+tap y
+wait 100
+shot h10-cadena-seleccion.bmp
+tap a
+tap r2 3
+press select
+tap a
+release select
+wait 100
+shot h10-cadena-pegado.bmp
+
+# Canción: la fila 0 entera (Y Y) pegada sobre la fila 3
+press select
+tap left 2
+release select
+tap up 3
+tap y
+tap y
+wait 100
+shot h10-cancion-seleccion.bmp
+tap a
+tap down 3
+press select
+tap a
+release select
+wait 100
+shot h10-cancion-pegado.bmp
+
+# En la Grilla, el portapapeles (celdas de la canción) no se pega: aviso
+press select
+tap right
+release select
+press select
+tap a
+release select
+wait 100
+shot h10-aviso.bmp
+
+# Instrumento: Y selecciona el del SINTE, A copia; L1 (BAJO) y Select + A lo pega
+press select
+tap right 3
+release select
+tap y
+wait 100
+shot h10-instrumento-seleccion.bmp
+tap a
+tap l1
+press select
+tap a
+release select
+wait 100
+shot h10-instrumento-pegado.bmp
+quit
