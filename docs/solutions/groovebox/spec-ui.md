@@ -180,7 +180,7 @@ celda que suena se dibuja en verde con una barra de avance por la cadena y `>` m
 columna LARGO va con la fuente chica (entra con las dos fuentes); con 12×24 los nombres de pista quedan en 3 letras.
 **X** toca la primera frase de la cadena entera, **una vez**, con su transposición (H4: vista previa del motor,
 [spec-motor](spec-motor.md#modos-de-reproducción)); si la frase no tiene notas, suena el instrumento. La selección (Y) y
-pegar llegan en H10.
+pegar están implementados desde el H10 (ver [Modo selección](#modo-selección)).
 
 ### 2. Grilla
 
@@ -640,6 +640,16 @@ toque (el A que abrió el diálogo y otro en menos de 300 ms) se ignora, así no
 
 **Copiar frente a clonar:** copiar y pegar números de frase o de cadena **comparte** el mismo dato (editar uno cambia todos, y se marca con `*`).
 Para tener una copia independiente se usa **A + Y** (clonar).
+
+**Implementado (H10)** en Grilla, Frase, Canción, Cadena e Instrumento (Proyecto y Mezcla no tienen selección). Lo
+seleccionado se dibuja con fondo azul y el pie muestra **SELECCIÓN**, el tamaño ("3 pistas × 8 pasos") y los controles;
+copiar, cortar y pegar dejan un mensaje con cuántos elementos. En la Grilla y la Frase se copian **valores** de pasos;
+en la Canción y la Cadena, **referencias** (cortar quita las referencias y no borra cadenas ni frases); en Instrumento,
+los parámetros. Pegar pasos crea la frase que falte (creación implícita) y descarta lo que no entra; pegar entradas de
+cadena en una fila sin cadena la crea. Mientras la selección está abierta, la vista no sigue la reproducción.
+Desvíos (FRA no seleccionable, posiciones enteras en la Cadena, "bloque" = filas no vacías contiguas, la Frase pega en
+las columnas copiadas, X en Instrumento no corta, sin confirmación al pegar un instrumento de otro tipo) y la tabla
+completa de qué copia, corta y pega cada pantalla: [README del groovebox](../../../projects/groovebox/README.md#modo-selección-h10).
 
 ## Tipografía y legibilidad
 

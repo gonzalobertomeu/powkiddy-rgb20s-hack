@@ -2,7 +2,7 @@
 
 Groovebox para la Powkiddy RGB20S. Diseño y hitos en [docs/solutions/groovebox](../../docs/solutions/groovebox/README.md).
 
-Estado: **H4** (swing, voces por pista editables y notas largas superpuestas, tempo y swing en Proyecto, X en Canción
+Estado: **H10** (selección, copiar, cortar y pegar en Grilla, Frase, Canción, Cadena e Instrumento) sobre **H4** (swing, voces por pista editables y notas largas superpuestas, tempo y swing en Proyecto, X en Canción
 y Cadena toca la frase entera una vez) completado después de **H6** (guardar y abrir proyectos en RON: con esto se
 cumple el objetivo mínimo del MVP, "un beat de 4 compases guardado") sobre **H5** (cadenas y canción: cabezales por pista con la regla de bloques, modos canción / sección / cadena /
 frase, Start contextual, pantallas Canción y Cadena editables, seguir reproducción) sobre **H3** (secuenciador, edición
@@ -67,6 +67,11 @@ DSP: [dsp.md](../../docs/solutions/groovebox/dsp.md). Secuenciador: [spec-motor]
   columnas de v1 se ven deshabilitadas con la fuente chica y no aparecen con la grande).
 - **Creación implícita**: poner una nota donde la pista no tiene frase crea la fila de la canción, la cadena y/o
   la frase que falten (solo en la primera entrada libre de la cadena; si hay un hueco, avisa).
+- **Selección, copiar, cortar y pegar (H10)**: Y abre la selección en la Grilla (celda → pista → sección), la Frase
+  (celda → columna → frase), la Canción (celda → fila → bloque), la Cadena (posiciones → cadena) y el Instrumento
+  (el instrumento entero). La cruz extiende desde el ancla, A copia, X corta, B cancela; Select + A pega en el cursor.
+  Lo seleccionado se ve con fondo azul y el pie muestra **SELECCIÓN**, el tamaño ("3 pistas × 8 pasos") y los
+  controles; copiar, cortar y pegar dejan un mensaje con cuántos elementos. Detalle abajo, en "Modo selección".
 - **Instrumento (H4, parcial)**: tipo de la pista y **voces** (A + cruz ±1, A + B por defecto). El resto llega en H8.
 - **Mezcla**: pendiente.
 - **Proyecto (H6 y H4)**: nombre (renombrar), **tempo** y **swing** editables, **GUARDAR**, **GUARDAR COMO...**, **CARGAR...** y **NUEVO**; los ajustes
@@ -93,10 +98,10 @@ Según el [mapa global de spec-ui](../../docs/solutions/groovebox/spec-ui.md#map
 | Control | Solo | + A (mantener) | + B (mantener) | + Select |
 |---|---|---|---|---|
 | Cruz | Mover el cursor (repite: 250 ms y cada 33 ms) | Cambiar el valor: ←/→ ±1, ↑/↓ ±12 en notas, ±10 en FRA y VEL; ×4 tras 1 s | Salto: primera/última pista o paso | Cambiar de pantalla |
-| A | Poner nota (última nota, acorde, velocidad y largo de la pista). En FRA / FRASE vacía: última frase usada; en una celda de la Canción vacía: última cadena; doble toque: frase o cadena nueva | — | Borrar (A + B) | Pegar (H10) |
+| A | Poner nota (última nota, acorde, velocidad y largo de la pista). En FRA / FRASE vacía: última frase usada; en una celda de la Canción vacía: última cadena; doble toque: frase o cadena nueva | — | Borrar (A + B) | Pegar (ver "Modo selección") |
 | B | Cancelar / volver (en Proyecto) | Borrar | — | — |
 | X | Escuchar | — | — | Mute de la pista |
-| Y | Selección (H10) | Clonar la frase (en FRA, FRASE o la Frase) o la cadena (en la Canción) | — | Solo de la pista |
+| Y | Selección (ver "Modo selección") | Clonar la frase (en FRA, FRASE o la Frase) o la cadena (en la Canción) | — | Solo de la pista |
 | L1 / R1 | Pista − / + | Acorde − / + (no en percusión) | — | Octava base − / + |
 | L2 / R2 | Grilla: sección − / + (pasa a la fila siguiente; incluye una sección y una fila nuevas). Canción: 16 filas. Cadena: fila. Frase: entrada de la cadena | — | — | Tempo − / + |
 | Start | Reproducir / parar según la pantalla (canción, cadena o frase) | — | — | Loop de la sección / parar. **Mantener 1 s: salir** (con cambios sin guardar, pregunta) |
@@ -120,6 +125,34 @@ Mientras se mantiene Select, el minimapa se agranda.
 
 Con un modal abierto, Select + cruz, los gatillos, Start (salvo para aceptar) y X no hacen nada. En los diálogos solo
 confirma un toque de A separado: el segundo toque de un doble toque se ignora.
+
+### Modo selección (H10)
+
+| Control | Acción |
+|---|---|
+| Y (fuera de la selección) | Abrir la selección en el cursor (en la columna FRA de la Grilla, la pista entera) |
+| Cruz | Extender desde el ancla (en la Grilla y la Canción, L1/R1 también: pista − / +) |
+| Y | Ampliar: Grilla celda → pista → sección; Frase celda → columna → frase; Canción celda → fila → bloque; Cadena posiciones → cadena |
+| A | Copiar y salir (un segundo toque inmediato, el del doble toque, no inserta nada) |
+| X | Cortar y salir (en Instrumento no se corta) |
+| B | Cancelar |
+| Select + A (fuera de la selección) | Pegar con la esquina en el cursor |
+
+Qué se copia y qué hace cortar o pegar:
+
+| Pantalla | Portapapeles | Cortar | Pegar |
+|---|---|---|---|
+| Grilla | Pasos (pistas × pasos), con todos sus valores | Vacía los pasos | Desde la pista y el paso del cursor (desde FRA, el paso 1); lo que pasa de la pista 8 o del paso 16 se descarta. Crea la frase (y la cadena o la fila) que falte, como poner una nota; si hay un hueco, avisa y sigue con las demás pistas |
+| Frase | Pasos de una pista, solo las columnas elegidas | Con NOTA, el paso entero; sin NOTA, vuelve esas columnas al valor por defecto | Desde el paso del cursor, en **las mismas columnas** que se copiaron (no en la del cursor). Sin NOTA, solo cambia pasos con nota y toma valores de pasos con nota |
+| Canción | Números de cadena (filas × pistas) | Vacía las celdas; las cadenas siguen existiendo | Desde la fila y la pista del cursor; crea las filas que falten. Las celdas vacías también se pegan. Las cadenas se **comparten** (`*`) |
+| Cadena | Entradas (frase y transposición) que existan en el rango | Quita las entradas (las siguientes suben); las frases siguen existiendo | Desde la posición del cursor, reemplazando; no después de un hueco. En una fila sin cadena, la crea. Las frases se comparten |
+| Instrumento | El instrumento de la pista (tipo y parámetros) | — | Reemplaza el instrumento de la pista del cursor (el nombre de la pista no cambia) |
+
+El portapapeles es uno solo y recuerda su tipo: los pasos se pegan en la Grilla y en la Frase (en la Frase, solo si
+son de una pista), y cada otro tipo solo en su pantalla; si no, un aviso y nada cambia. Cortar y pegar marcan cambios
+sin guardar y llegan al motor como cualquier edición, también mientras suena. Mientras la selección está abierta, la
+Grilla y la Frase no siguen la reproducción (lo que se copia es lo que se ve); cambiar de pantalla, de sección o de
+pista (fuera de la Grilla y la Canción) la cancela. Start, mute, solo, tempo y octava siguen andando.
 
 ### Teclado del simulador
 
@@ -293,6 +326,12 @@ echo basura > /tmp/gb-datos/proyectos/beat_01/proyecto.ron
 GROOVEBOX_SCRIPT=scripts/demo-h6-bak.txt target/debug/groovebox
 ```
 
+[`scripts/demo-h10.txt`](scripts/demo-h10.txt) ("variaciones rápidas", con `GROOVEBOX_DEMO=1` y
+`GROOVEBOX_AUDIO=null`): selección de 3 pistas × 8 pasos en la Grilla, copiada y pegada en la segunda mitad de la
+sección 4, el SINTE cortado y vuelto a pegar, la columna VEL de la Frase copiada a otra sección, la cadena del SINTE
+pegada en una fila nueva (crea la cadena), la fila 0 de la Canción pegada sobre esa fila, el aviso de tipo incompatible
+en la Grilla y el instrumento del SINTE pegado en el BAJO (15 capturas).
+
 Los guiones que pasan por Proyecto escriben `config.ron` en la carpeta de datos: conviene usar `GROOVEBOX_DATA`.
 Con `just run-arm` (QEMU), `GROOVEBOX_DATA` tiene que estar dentro de `RUN_ARM_OUT` para poder escribirse; las
 capturas salen iguales a las nativas salvo la ruta de datos, las fechas y algún mensaje que vence antes por la lentitud.
@@ -349,7 +388,8 @@ un renombrado (`printf ... > st.n && mv st.n st`).
 | `src/storage.rs` | Carpeta de datos, guardado atómico con `.bak`, lista de proyectos, `config.ron` |
 | `src/modal.rs` | Editor de nombres, navegador de proyectos y diálogos (estado y edición) |
 | `src/script.rs` | Guion de input |
-| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), modales de archivo (`files.rs`) |
+| `src/selection.rs` | Modo selección y portapapeles (H10): áreas por pantalla, copiar, cortar y pegar sobre el proyecto (funciones puras) y los gestos |
+| `src/ui/` | Dibujo: tema, barra de título, pie, minimapa (`mod.rs`), fuente BDF y atlas (`font.rs`), Grilla, Frase, Canción, Cadena y Proyecto (`screens.rs`), modales de archivo (`files.rs`), resaltado y pie de la selección (`selection.rs`) |
 | `src/audio.rs` | Salida con cpal (48 kHz f32 preferido) o backend nulo; `Processor`: lo que corre en el callback (comandos, render, conversión, medición, eventos de carga y cabezales) |
 | `../rgb20s-common` | Batería y estado del servicio de audio (compartido con el launcher) |
 | `src/sync.rs` | `EngineMirror`: manda al motor las diferencias entre el proyecto y lo último que se le mandó |
@@ -384,6 +424,14 @@ H2 agrega `hound` (escribir WAV en `groovebox render`). H3, H4 y H5 no agregan d
 | `ron 0.12` | Proyecto y `config.ron` en RON ([ADR 0004](../../docs/decisions/0004-formato-de-proyecto-ron.md)); trae `bitflags`, `typeid` y `unicode-ident` |
 
 ## Desvíos respecto de la spec
+
+- **Selección (H10)**: la columna FRA de la Grilla no se selecciona (Y ahí toma la pista entera); para copiar números
+  de frase está la Cadena. En la Cadena se seleccionan posiciones enteras (frase y transposición). El "bloque" de la
+  Canción son las filas no vacías contiguas (en cualquier pista) alrededor de la selección. En la Frase, pegar usa las
+  columnas copiadas, no la del cursor, y no acepta pasos de varias pistas. Pegar un instrumento no pide confirmación
+  aunque cambie el tipo (sí la pide cambiar el tipo a mano, H8). X en Instrumento avisa en lugar de cortar. Con la
+  fuente de 12×24, el pie de la Frase en selección solo muestra SELECCIÓN y el tamaño (no entran los controles).
+  Deshacer (Select + B) y A + cruz sobre la selección son v1.
 
 - **Archivo (H6)**: NUEVO también pide confirmación con cambios sin guardar; el diálogo suma **Start: guardar y
   seguir**; "nombre" renombra (mueve la carpeta) y GUARDAR COMO guarda una copia; en el editor de nombres ↑/↓ sin A

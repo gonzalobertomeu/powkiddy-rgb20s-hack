@@ -12,6 +12,7 @@ use crate::model::{
     SWING_MAX, SWING_MIN, Section, Step, TEMPO_MAX, TEMPO_MIN, TRACKS, TRANSPOSE_MAX, TrackKind,
     gate_nudge,
 };
+use crate::selection::{Clip, Selection};
 use crate::storage::{
     AppConfig, DataDir, FontChoice, LoadError, PROJECT_FILE, PROJECTS_DIR, valid_name,
 };
@@ -85,7 +86,7 @@ impl PhraseCol {
         PhraseCol::Gate,
     ];
 
-    fn index(self) -> usize {
+    pub fn index(self) -> usize {
         self as usize
     }
 }
@@ -227,11 +228,17 @@ pub struct App {
     pub config: AppConfig,
     /// Navegador, editor de nombres o diálogo abierto: recibe todos los gestos.
     pub modal: Option<Modal>,
+    /// Modo selección (H10): mientras está activo, la cruz extiende en lugar de mover.
+    pub selection: Option<Selection>,
+    /// Portapapeles único: recuerda el tipo de lo copiado (spec-ui, "Modo selección").
+    pub clipboard: Option<Clip>,
     pub message: Option<Message>,
     pub quit: bool,
     now: u64,
     /// El último gesto fue un A que puso un número de frase o de cadena (para el doble toque).
     just_inserted: bool,
+    /// El último gesto copió con A: el segundo toque de un doble toque no inserta nada.
+    pub(crate) just_copied: bool,
 }
 
 fn dir_delta(dir: Dir, fine: i32, coarse: i32, fast: bool) -> i32 {
@@ -292,10 +299,13 @@ impl App {
             data: None,
             config: AppConfig::default(),
             modal: None,
+            selection: None,
+            clipboard: None,
             message: None,
             quit: false,
             now: 0,
             just_inserted: false,
+            just_copied: false,
         }
     }
 
@@ -316,7 +326,7 @@ impl App {
         }
     }
 
-    fn info(&mut self, text: impl Into<String>) {
+    pub(crate) fn info(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),
             at_ms: self.now,
@@ -324,7 +334,7 @@ impl App {
         });
     }
 
-    fn warn(&mut self, text: impl Into<String>) {
+    pub(crate) fn warn(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),
             at_ms: self.now,
@@ -342,9 +352,13 @@ impl App {
         (self.playhead.playing && h.active).then_some(h)
     }
 
-    /// La Grilla y la Frase siguen a los cabezales.
+    /// La Grilla y la Frase siguen a los cabezales. Con una selección abierta la vista se queda
+    /// quieta: lo que se copia es lo que se ve.
     fn following(&self) -> bool {
-        self.follow && self.playhead.playing && matches!(self.screen, Screen::Grid | Screen::Phrase)
+        self.follow
+            && self.playhead.playing
+            && self.selection.is_none()
+            && matches!(self.screen, Screen::Grid | Screen::Phrase)
     }
 
     /// Sección que se muestra para `track`. Siguiendo la reproducción, cada pista muestra la
@@ -430,6 +444,9 @@ impl App {
     pub fn handle(&mut self, g: Gesture, now: u64) -> Option<Audition> {
         self.now = now;
         let just_inserted = std::mem::take(&mut self.just_inserted);
+        if std::mem::take(&mut self.just_copied) && g == Gesture::InsertNew {
+            return None;
+        }
         let track = self.track;
         let screen = self.screen;
         let audition = self.dispatch(g, just_inserted);
@@ -442,6 +459,9 @@ impl App {
     fn dispatch(&mut self, g: Gesture, just_inserted: bool) -> Option<Audition> {
         if let Some(modal) = self.modal.take() {
             self.handle_modal(modal, g);
+            return None;
+        }
+        if self.selection.is_some() && self.handle_selection(g) {
             return None;
         }
         match g {
@@ -490,8 +510,12 @@ impl App {
                 };
                 None
             }
-            Gesture::Paste | Gesture::SelectMode => {
-                self.info("selección, copiar y pegar: llegan en H10");
+            Gesture::SelectMode => {
+                self.start_selection();
+                None
+            }
+            Gesture::Paste => {
+                self.paste();
                 None
             }
             Gesture::Track(d) if self.screen != Screen::Project => {
@@ -1405,6 +1429,7 @@ impl App {
         self.project = project;
         self.read_only = read_only;
         self.modified = false;
+        self.selection = None;
         self.transport = None;
         self.section = Section::default();
         self.grid_col = GridCol::Step(0);
