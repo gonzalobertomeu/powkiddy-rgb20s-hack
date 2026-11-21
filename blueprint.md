@@ -53,6 +53,12 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 - Pendiente opcional: diagnóstico del jack con el usuario (`just img-dtb-update`, `projects/linux-image/jack/README.md`) e instalación del DTB sin detección.
 - `rgb20s-bootlog.service` infla `systemd-analyze` (sleep 10 + volcado a la FAT, después del launcher): `BOOT_LOGS=no` cuando la imagen esté estable.
 - Inventario completo pendiente (`infra/device/inventory.sh` adaptado a Arch) y medición de latencia de audio y CPU (`groovebox bench`) en la consola: parte del H11.
+- **Primer arranque (2026-11-20, otra sesión):**
+  - Respaldo de ArkOS en `~/rgb20s-backup/` (`tf1-arkos.img`, 16 361 455 616 bytes, sha256 `ff4034f7…7506533`, sin comparar contra la tarjeta; y `boot-files/`). La imagen grabada vino de Omarchy (`rgb20s-arch.img`, sha256 `1a782b5f…4214f1dd9`).
+  - Riesgo 8 confirmado y resuelto: el DTS de ROCKNIX deja `otg-port` del PHY en `disabled` (`Requested PHY is disabled`, UDC `not attached`). Se agregó `&u2phy_otg { status = "okay"; }` al DTS del repo; en la SD se parcheó solo el DTB (el original quedó como `.dtb.orig`). **Falta recompilar la imagen** para que lo traiga.
+  - El gadget **no enumera con cable USB-C a USB-C** (la Mac no entrega VBUS: el cargador marca `ONLINE=0`; probablemente faltan resistencias en CC del puerto OTG, sin verificar). **Con cable USB-A a USB-C funciona.** El puerto marcado OTG es el de datos; el DC solo carga.
+  - Internet en la consola sin tocar la red de la Mac: túnel SOCKS inverso, `ssh -R 1080 …` y `env all_proxy=socks5h://127.0.0.1:1080 pacman …`. Antes, poner la hora (`sudo date -u -s`) porque no hay RTC.
+  - Bugs de la imagen encontrados: (1) faltaba el llavero de pacman (`build-image.sh` lo borra y nadie lo recreaba): arreglado en `firstboot.sh`, sin probar en imagen nueva; (2) el kernel no trae Landlock y pacman 7 falla con su sandbox: por ahora `--disable-sandbox` (lo corre el usuario); **pendiente** `CONFIG_SECURITY_LANDLOCK=y` y agregarlo a `CONFIG_LSM`. `sudo` pide la contraseña de `alarm`.
 
 ### Más adelante
 - Explorar USB gadget (MIDI o HID) además de red.
@@ -66,7 +72,7 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
 - [ ] (Opcional, solo para `just qemu-boot`) `sudo pacman -S qemu-system-aarch64`
 - [x] Aceptar el ADR 0008 (compilación cruzada)
 - [x] Aceptar los ADR 0004, 0005 y 0009 a 0012 (2026-11-20)
-- [x] Flashear `rgb20s-arch.img`
+- [x] Respaldar la SD de ArkOS y flashear `rgb20s-arch.img` (2026-11-20)
 - [ ] Revisar y aceptar (o cambiar) los ADR 0014 a 0017, en estado *propuesta*
 - [ ] (Opcional) Instalar `rsync` en la consola (`sudo pacman -S rsync`; necesita internet) o esperar a la imagen completa
 - [x] Reiniciar Claude Code para que carguen los agentes, las skills y el `CLAUDE.md`
@@ -77,7 +83,7 @@ H0 ventana SDL2 + tono · H1 input, fuente y grilla (prueba de legibilidad en la
   - `/plugin install context7@claude-plugins-official`, para documentación actualizada de crates (usa un servicio externo)
 - [x] Responder (2026-11-19):
   - Sistema actual: ArkOS o dArkOS (a confirmar cuál)
-  - Segunda microSD: no, y no hace falta conservar el sistema original
+  - Segunda microSD: sí, la consola usa dos (TF1 sistema, TF2 datos; corregido el 2026-11-20). No hace falta conservar el sistema original
   - Lector de microSD: sí. También hay auriculares o parlante para probar el audio
 - [x] Wi-Fi: la consola no tiene. Hay que usar la SD o USB OTG
 

@@ -246,7 +246,7 @@ Lo que las skills `rockchip-rk3326-boot` y `alarm-rootfs` dicen de memoria, cont
 
 - [ ] Respaldar la partición de arranque actual (sesión principal) y comparar su bootloader con `uboot.bin`
 - [ ] Primer arranque y lectura de `/boot/logs/`
-- [ ] Confirmar el cableado del USB-C (riesgos 7 y 8)
+- [x] Confirmar el cableado del USB-C (riesgos 7 y 8): era el **8**. Con `&u2phy_otg { status = "okay"; }` el gadget enumera en la Mac, pero solo con cable USB-A a USB-C (con C a C la Mac no entrega VBUS) (2026-11-20)
 - [ ] Confirmar pantalla, joypad, audio, batería y Panfrost
 - [ ] Medir el tiempo de arranque y adelgazar la config del kernel
 - [ ] Servicio del groovebox en KMS (requiere `mesa`, `sdl2` y un build contra Arch)
