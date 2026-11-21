@@ -117,7 +117,8 @@ Vale en todas las pantallas, salvo que la tabla de cada pantalla diga otra cosa.
 Con algo sonando, Start detiene. Cambiar de pantalla no cambia lo que suena.
 
 **Implementado (H5)** tal cual la tabla; Select + Start con algo sonando también detiene (la spec no lo define) y
-mantener Select + Start 1 s sale de la app.
+mantener Select + Start 1 s sale de la app. El título dice qué suena (`> CANCIÓN`, `> LOOP SEC`, `> LOOP CAD`,
+`> LOOP FRA`) y el pie empieza con Start y `Sel+Start loop`, para que entren con la fuente grande (2026-11-21).
 
 Detalles de los sticks: zona muerta del 15 % (configurable); el desplazamiento se suma al valor guardado y se suaviza; al soltar,
 vuelve al valor guardado en unos 100 ms. Arriba es positivo. La calibración está en `config.ron`.

@@ -17,7 +17,9 @@ const ROW_H: i32 = 32;
 const BLOCK_H: i32 = 20;
 const GROUP_GAP: i32 = 6;
 
-const HELP: [&str; 8] = [
+pub(super) const HELP: [&str; 9] = [
+    "Start canción",
+    "Sel+Start loop",
     "A poner/editar",
     "A+B borrar",
     "A+L1/R1 acorde",
@@ -25,7 +27,6 @@ const HELP: [&str; 8] = [
     "Y selec.",
     "Sel+A pegar",
     "L2/R2 sección",
-    "Start canción",
 ];
 
 struct Layout {
